@@ -1,0 +1,49 @@
+# convenience wrapper to the quine-mccluskey package
+# pip install quine-mccluskey
+
+from .tools import generate, to_minterms
+from .nodes import *
+
+def simplify(expr):
+    from quine_mccluskey.qm import QuineMcCluskey
+
+    qm = QuineMcCluskey(use_xor=False)
+
+    vnames = sorted(expr.varnames())
+    ones = to_minterms(expr)
+    result = qm.simplify(ones, dc=[], num_bits=len(vnames))
+
+    if result == None:
+        return ValNode(False)
+    if len(result) == 1 and list(result)[0] == '-'*len(vnames):
+        return ValNode(True)
+
+    products = []
+    # s is like '1-'
+    for s in result:
+        factors = []
+        for (i,c) in enumerate(s):
+            match c:
+                case '-':
+                    continue
+                case '1':
+                    factors.append(VarNode(vnames[i]))
+                case '0':
+                    factors.append(NotNode(VarNode(vnames[i])))
+                case _:
+                    raise Exception(f'error: {c}')
+
+        products.append(AndNode(*factors))
+
+    return OrNode(*products)
+
+if __name__ == '__main__':
+    for n_nodes in range(1, 40):
+        expr0 = generate(n_nodes, list('ABCDEFGHIJ'))
+        expr1 = simplify(expr0)
+        print(f'{expr0} -> {expr1}')
+
+        vnames = expr0.varnames()
+        assert to_minterms(expr0, vnames) == to_minterms(expr1, vnames)
+
+    print('pass')
