@@ -1,6 +1,6 @@
 from subprocess import Popen, PIPE
 
-from .tools import parse_python
+from .tools import parse_python, generate, to_minterms
 from .nodes import *
 
 class TruthTable(object):
@@ -17,7 +17,7 @@ class TruthTable(object):
         orow = [str(int(o)) for o in outputs]
         self.rows.append(''.join(irow) + ' ' + ''.join(orow))
 
-    def minimize(self):
+    def simplify(self):
         # form input
         lines = []
         lines.append(f'.i {self.n_inputs}')
@@ -26,8 +26,8 @@ class TruthTable(object):
         lines.extend(self.rows)
         lines.append('.e')
         script = '\n'.join(lines)
-        print('INPUT:')
-        print(script)
+        #print('INPUT:')
+        #print(script)
         script = script.encode('utf-8')
 
         # pipe to espresso
@@ -71,7 +71,7 @@ def bool_gen(varnames):
     for i in range(2**n):
         yield {name: bool(i & (1<<(n-pos-1))) for (pos, name) in enumerate(varnames)}
 
-def minimize(expr):
+def simplify(expr):
     if type(expr) == str:
         expr = parse_python(expr)
 
@@ -90,7 +90,7 @@ def minimize(expr):
 
     sum_ = ValNode(False)
 
-    for product in tt.minimize():
+    for product in tt.simplify():
         (lits, nlits) = product
 
         product = ValNode(True)
@@ -114,7 +114,7 @@ if __name__ == '__main__':
     tt.add([0, 1], [1])
     tt.add([1, 0], [1])
     tt.add([1, 1], [1])
-    #print(tt.minimize())
+    #print(tt.simplify())
 
     # A + /AB + /A/B
     tt = TruthTable(2, 1)
@@ -122,22 +122,30 @@ if __name__ == '__main__':
     tt.add([0, 1], [1])
     tt.add([1, 0], [1])
     tt.add([1, 1], [1])
-    #print(tt.minimize())
+    #print(tt.simplify())
 
     # A+/AB  ->  A+B
-    tmp = minimize('A or (not A and B)')
+    tmp = simplify('A or (not A and B)')
     assert str(tmp) in ['A+B', 'B+A']
 
     # A/B + AB  ->  A
-    tmp = minimize('(A and not B) or (A and B)')
+    tmp = simplify('(A and not B) or (A and B)')
     assert str(tmp) == 'A'
 
     # /A/B/C + /A/BC  ->  /A/B
-    tmp = minimize('(not A and not B and not C) or (not A and not B and C)')
+    tmp = simplify('(not A and not B and not C) or (not A and not B and C)')
     assert str(tmp) in ['/B/A', '/A/B']
 
     # /X/YZ + /XYZ + X/Y  - > /XZ + X/Y
-    tmp = minimize('(not X and not Y and Z) or (not X and Y and Z) or (X and not Y)')
+    tmp = simplify('(not X and not Y and Z) or (not X and Y and Z) or (X and not Y)')
     assert str(tmp) in ['/XZ+/YX', '/YX+/XZ']
+
+    for n_nodes in range(1, 40):
+        expr0 = generate(n_nodes, list('ABCDEFGHIJ'))
+        expr1 = simplify(expr0)
+        print(f'{expr0} -> {expr1}')
+
+        vnames = expr0.varnames()
+        assert to_minterms(expr0, vnames) == to_minterms(expr1, vnames)
 
     print('pass')
