@@ -2,7 +2,7 @@
 # pip install quine-mccluskey
 
 from .tools import generate, to_minterms
-from .nodes import *
+from .expr import *
 
 def simplify(expr):
     from quine_mccluskey.qm import QuineMcCluskey
@@ -14,9 +14,9 @@ def simplify(expr):
     result = qm.simplify(ones, dc=[], num_bits=len(vnames))
 
     if result == None:
-        return ValNode(False)
+        return Val(False)
     if len(result) == 1 and list(result)[0] == '-'*len(vnames):
-        return ValNode(True)
+        return Val(True)
 
     products = []
     # s is like '1-'
@@ -27,15 +27,15 @@ def simplify(expr):
                 case '-':
                     continue
                 case '1':
-                    factors.append(VarNode(vnames[i]))
+                    factors.append(Var(vnames[i]))
                 case '0':
-                    factors.append(NotNode(VarNode(vnames[i])))
+                    factors.append(Not(Var(vnames[i])))
                 case _:
                     raise Exception(f'error: {c}')
 
-        products.append(AndNode(*factors))
+        products.append(And(*factors))
 
-    return OrNode(*products)
+    return Or(*products)
 
 if __name__ == '__main__':
     for n_nodes in range(1, 40):

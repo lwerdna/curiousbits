@@ -1,4 +1,4 @@
-# TEST WITH: python -m curiousbits.graphing.nxtools
+# TEST WITH: python -m curiousbits.graphs.nxtools
 
 import random
 from subprocess import Popen, PIPE
@@ -11,7 +11,7 @@ import networkx as nx
 
 # f_node_attrs: function to return additional node attributes
 # f_edge_attrs: function to return additional edge attributes
-def gen_dot(G, f_node_attrs=None, f_edge_attrs=None):
+def gen_dot(G, f_node_attrs=None, f_edge_attrs=None, f_extra=None):
     dot = []
     dot.append('digraph G {')
 
@@ -36,16 +36,21 @@ def gen_dot(G, f_node_attrs=None, f_edge_attrs=None):
             attrs.extend(f_edge_attrs(G, n0, n1))
         dot.append(f'{n0} -> {n1} [' + ' '.join(attrs) + '];')
 
+    if f_extra != None:
+        dot.append(f_extra(G))
+
     dot.append('}')
 
-    return '\n'.join(dot)
+    result = '\n'.join(dot)
+    #print(result)
+    return result
 
 # G:            the graph
 # fpath:        path to output file
 # f_node_attrs: function to return additional node attributes
 # f_edge_attrs: function to return additional edge attributes
-def draw(G, fpath, f_node_attrs=None, f_edge_attrs=None, verbose=False):
-    dot = gen_dot(G, f_node_attrs, f_edge_attrs)
+def draw(G, fpath, f_node_attrs=None, f_edge_attrs=None, f_extra=None, verbose=False):
+    dot = gen_dot(G, f_node_attrs, f_edge_attrs, f_extra)
 
     if fpath.endswith('.svg'):
         ftype = 'svg'
@@ -163,7 +168,9 @@ def reversed_graph(G):
         T.add_edge(b, a)
     return T
 
-def compute_join_points(G):
+# Return { A: B, ... } where B is the node where all outgoing paths from A
+# converge, or join. B exists for every A when graph is single-exit.
+def joins(G):
     rgraph = reversed_graph(G)
     dtree = dominator_tree(rgraph)
     return {b:a for (a,b) in dtree.edges}
@@ -215,15 +222,15 @@ if __name__ == '__main__':
 
     # draw the test CFG
     G = gen_test0()
-    draw_networkx(G, '/tmp/test0.svg', verbose=True)
+    draw(G, '/tmp/test0.svg', verbose=True)
 
     # draw the test CFG, dominator tree
     D = dominator_tree(G)
-    draw_networkx(D, f'/tmp/test0-domtree.svg', verbose=True)
+    draw(D, f'/tmp/test0-domtree.svg', verbose=True)
 
     # draw the test CFG, join points
     red_edges = set()
-    for a,b in compute_join_points(G).items():
+    for a,b in joins(G).items():
         if G.out_degree(a) > 1:
             G.add_edge(a, b)
             red_edges.add((a, b))
@@ -233,13 +240,13 @@ if __name__ == '__main__':
             return ['style="dashed"', 'color="red"']
         return []
 
-    draw_networkx(G, '/tmp/test0-jpoints.svg', f_edge_attrs=eattrs, verbose=True)
+    draw(G, '/tmp/test0-joins.svg', f_edge_attrs=eattrs, verbose=True)
 
     # draw the "dream" CFG
     G = gen_dream_R2()
-    draw_networkx(G, '/tmp/dream_r2.svg', verbose=True)
+    draw(G, '/tmp/dream_r2.svg', verbose=True)
 
     # draw some randomly generated single-entry, single-exit CFG's
     for i in range(4):
         G = gen_SESE(16)
-        draw_networkx(G, f'/tmp/generated{i}.svg', verbose=True)
+        draw(G, f'/tmp/generated{i}.svg', verbose=True)

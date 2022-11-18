@@ -1,8 +1,8 @@
 import ast
 import random
 
-#from . import nodes
-from .nodes import *
+#from . import expr
+from .expr import *
 
 #------------------------------------------------------------------------------
 # string <-> expressions
@@ -17,15 +17,15 @@ def refine(tree):
     elif type(tree) == ast.Expr:
         return refine(tree.value)
     elif type(tree) == ast.UnaryOp:
-        return NotNode(refine(tree.operand))
+        return Not(refine(tree.operand))
     elif type(tree) == ast.BoolOp:
         subr = [refine(v) for v in tree.values]
         if type(tree.op) == ast.Or:
-            return OrNode(*subr)
+            return Or(*subr)
         elif type(tree.op) == ast.And:
-            return AndNode(*subr)
+            return And(*subr)
     elif type(tree) == ast.Name:
-        return VarNode(tree.id)
+        return Var(tree.id)
     else:
         breakpoint()
 
@@ -48,27 +48,27 @@ def generate(n_nodes, varnames):
             actions = ['initialize']
         else:
             actions = ['or-var', 'and-var']
-            if not isinstance(expr, NotNode):
+            if not isinstance(expr, Not):
                 actions.append('not')
 
         action = random.choice(actions)
 
         # these actions require creation of X or /X
         if action in ['initialize', 'or-var', 'and-var']:
-            v = VarNode(random.choice(varnames))
+            v = Var(random.choice(varnames))
             if random.randint(0,1):
-                v = NotNode(v)
+                v = Not(v)
                 n += 1
 
         match action:
             case 'initialize':
                 expr = v
             case 'not':
-                expr = NotNode(expr)
+                expr = Not(expr)
             case 'or-var':
-                expr = OrNode(expr, v)
+                expr = Or(expr, v)
             case 'and-var':
-                expr = AndNode(expr, v)
+                expr = And(expr, v)
         n += 1
 
     return expr
@@ -96,20 +96,20 @@ def from_minterms(ones, varnames):
     n = len(varnames)
 
     if not ones or not n:
-        return ValNode(False)
+        return Val(False)
 
     products = []
     for minterm in ones:
         factors = []
         for i in range(n):
             if minterm & (1<<(n-1-i)):
-                factors.append(VarNode(varnames[i]))
+                factors.append(Var(varnames[i]))
             else:
-                factors.append(NotNode(VarNode(varnames[i])))
+                factors.append(Not(Var(varnames[i])))
 
-        products.append(AndNode(*factors))
+        products.append(And(*factors))
 
-    return OrNode(*products)
+    return Or(*products)
 
 #------------------------------------------------------------------------------
 # tests
@@ -120,7 +120,11 @@ if __name__ == '__main__':
     print('GENERATE SOME RANDOM EQUATIONS')
     varnames = list('ABCDEF')
     for n_nodes in range(1, 20):
-        print(f'{n_nodes}: ' + str(generate(n_nodes, varnames)))
+        expr = generate(n_nodes, varnames)
+        print(f'{n_nodes}: ' + str(expr))
+        print(f'{n_nodes}: ' + repr(expr))
+
+    sys.exit(0)
 
     print('SHOW MINTERMS')
     for n_nodes in range(1, 20):

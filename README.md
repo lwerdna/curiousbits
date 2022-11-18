@@ -10,4 +10,5 @@ tests are located per-module currently:
 ```
 python -m curiousbits.boolalg.simplify_espresso
 python -m curiousbits.boolalg.simplify_qm
+python -m curiousbits.graphs.nxtools
 ```
