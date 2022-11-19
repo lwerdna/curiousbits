@@ -1,7 +1,7 @@
 from subprocess import Popen, PIPE
 
 from .tools import parse_python, generate, to_minterms
-from .nodes import *
+from .expr import *
 
 class TruthTable(object):
     def __init__(self, n_inputs, n_outputs):
@@ -88,20 +88,20 @@ def simplify(expr):
         #print(f'tt_outputs: {tt_outputs}')
         tt.add(tt_inputs, tt_outputs)
 
-    sum_ = ValNode(False)
+    sum_ = Val(False)
 
     for product in tt.simplify():
         (lits, nlits) = product
 
-        product = ValNode(True)
+        product = Val(True)
         for i in lits:
-            product = AndNode(VarNode(vnames[i]), product)
+            product = And(Var(vnames[i]), product)
         for i in nlits:
-            product = AndNode(NotNode(VarNode(vnames[i])), product)
+            product = And(Not(Var(vnames[i])), product)
 
-        sum_ = OrNode(product, sum_)
+        sum_ = Or(product, sum_)
 
-    result = sum_.prune_vals()
+    result = sum_.reduce()
 
     return result
 

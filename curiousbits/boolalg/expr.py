@@ -5,6 +5,8 @@
 # if you want a new expression tree, do .clone() then an in-place operation
 
 # evaluation is done with
+# one-shot evaluatoin is done with .evaluate()
+#
 # .set_variable(), .reduce()
 
 import random
@@ -46,13 +48,19 @@ class And(BoolExpr):
         assert all(isinstance(c, BoolExpr) for c in children), breakpoint()
         self.children = list(children)
 
+    def evaluate(self, values):
+        sr = [c.evaluate(values) for c in self.children]
+        if any(r==False for r in sr): return False
+        if all(r==True for r in sr): return True
+        return None
+
     def reduce(self):
         tmp = [c.reduce() for c in self.children]
 
         # short-circuit eval
-        if any([c for c in tmp if c == False]):
+        if any([c==False for c in tmp]):
             return Val(False)
-        if all([c for c in tmp if c == True]):
+        if all([c==True for c in tmp]):
             return Val(True)
 
         # collect children that aren't true
@@ -90,16 +98,19 @@ class Or(BoolExpr):
         assert all(isinstance(c, BoolExpr) for c in children), breakpoint()
         self.children = list(children)
 
-    def reduce(self, values):
-        return any(c.evaluate(values) for c in self.children)
+    def evaluate(self, values):
+        sr = [c.evaluate(values) for c in self.children]
+        if any(r==True for r in sr): return True
+        if all(r==False for r in sr): return False
+        return None
 
     def reduce(self):
         tmp = [c.reduce() for c in self.children]
 
         # if there's a single true being or'd, return true
-        if any([c for c in tmp if c == True]):
+        if any([c==True for c in tmp]):
             return Val(True)
-        if all([c for c in tmp if c == False]):
+        if all([c==False for c in tmp]):
             return Val(False)
 
         # collect children that aren't false
@@ -138,8 +149,10 @@ class Not(BoolExpr):
         return self.children[0]
 
     def evaluate(self, values):
-        return not self.child.evaluate(values)
+        sr = self.child.evaluate(values)
+        return (not sr) if type(sr)==bool else None
 
+    # modifies the BoolExpr
     def reduce(self):
         self.children = [self.child.reduce()]
         if isinstance(self.child, Not):
@@ -192,7 +205,7 @@ class Var(BoolExpr):
         return self
 
     def evaluate(self, values):
-        return values[self.name]
+        return values.get(self.name)
 
     def omnitrue(self, names):
         if self.name in names:
@@ -280,6 +293,11 @@ if __name__ == '__main__':
     e2 = e.clone()
     print(e2)
     assert id(e) != id(e2)
+
+    # test case for reduction
+    e = Or(And(Var("B"),Val(True)),Or(And(Var("A"),Val(True)),Val(False)))
+    e2 = e.reduce()
+    assert str(e2) in ['A+B', 'B+A']
 
     # simple xor, e = A/B + /AB
     e = Or(And(Var('A'),Not(Var('B'))), And(Not(Var('A')),Var('B')))
