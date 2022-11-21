@@ -26,6 +26,8 @@ def refine(tree):
             return And(*subr)
     elif type(tree) == ast.Name:
         return Var(tree.id)
+    elif type(tree) == ast.Constant:
+        return Val(tree.value)
     else:
         breakpoint()
 
@@ -124,8 +126,6 @@ if __name__ == '__main__':
         print(f'{n_nodes}: ' + str(expr))
         print(f'{n_nodes}: ' + repr(expr))
 
-    sys.exit(0)
-
     print('SHOW MINTERMS')
     for n_nodes in range(1, 20):
         expr = generate(n_nodes, varnames)
@@ -138,7 +138,7 @@ if __name__ == '__main__':
         print(f'{minterms} -> {expr}')
     for minterms in [[], [0], [1], [2], [3], [0,1], [0,2], [0,3], [1,2], [1,3], [2,3]]:
         expr = from_minterms(minterms, list('AB'))
-        print(f'{minterms} -> {expr}')        
+        print(f'{minterms} -> {expr}')
 
     print('CONVERT TO/FROM MINTERMS')
     expr0 = parse_python('A')
@@ -165,5 +165,60 @@ if __name__ == '__main__':
         expr1 = from_minterms(minterms0, varnames)
         minterms1 = to_minterms(expr1)
         print(f'{expr1} -> {minterms1}')
+
+    print('FACTOR OUT SUBTREE')
+    a = parse_python('A')
+    b = parse_python('B')
+    str(a)
+    str(b)
+    expr = a.replace_subtree(a, b)
+    assert str(expr) == 'B'
+
+    a = parse_python('A and B')
+    b = parse_python('B')
+    c = parse_python('True')
+    str(a)
+    str(b)
+    expr = a.replace_subtree(b, c)
+    assert str(expr) == 'AT'
+    expr = expr.reduce()
+    assert str(expr) == 'A'
+
+    # replace complicated expression with itself
+    a = parse_python('A and B and C and D and E and F')
+    b = parse_python('B and F and E and D and A and C')
+    c = parse_python('True')
+    str(a)
+    str(b)
+    expr = a.replace_subtree(b, c)
+    assert str(expr) == 'T'
+
+    a = parse_python('G or (A and B and C and D and E and F)')
+    b = parse_python('B and F and E and D and A and C')
+    c = parse_python('H')
+    str(a)
+    str(b)
+    expr = a.replace_subtree(b, c)
+    assert str(expr) == 'G+H'
+
+    a = parse_python('(v0 and v1) or (not v0 and v3)')
+    b = parse_python('(v0 and v1)')
+    c = parse_python('True')
+    str(a)
+    str(b)
+    expr = a.replace_subtree(b, c)
+    assert str(expr) == '/v0v3+T'
+    expr = expr.reduce()
+    assert str(expr) == 'T'
+
+    a = parse_python('A and ((v0 and v1) or (not v0 and v3))')
+    b = parse_python('(v0 and v1) or (not v0 and v3)')
+    c = parse_python('True')
+    str(a)
+    str(b)
+    expr = a.replace_subtree(b, c)
+    assert str(expr) == 'AT'
+    expr = expr.reduce()
+    assert str(expr) == 'A'
 
     print('pass')

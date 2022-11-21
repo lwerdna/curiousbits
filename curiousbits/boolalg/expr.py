@@ -18,6 +18,8 @@ class BoolExpr(object):
 #    @classmethod
 #    def false(self):
 #        return Val(False)
+    def __init__(self):
+        self._str_cache = ''
 
     def varnames(self):
         result = set()
@@ -34,10 +36,30 @@ class BoolExpr(object):
         self.children = [c.set_variable(name, bool(value)) for c in self.children]
         return self
 
+    # Var and Val need to override
+    def all_nodes(self):
+        return sum([c for c in self.children], [self])
+
     def reduce(self):
         pass
 
     def clone(self):
+        pass
+
+    # WARNING! str() must first be called on before, after to build cache
+
+    # Var and Val (with no children) need to override
+    def replace_subtree(self, before, after):
+        if self._str_cache == before._str_cache:
+            return after
+        else:
+            self.children = [c.replace_subtree(before, after) for c in self.children]
+            return self
+
+    def __str_cached__(self):
+        return self._str_cache
+
+    def __str__(self):
         pass
 
     def __repr__(self):
@@ -45,6 +67,7 @@ class BoolExpr(object):
 
 class And(BoolExpr):
     def __init__(self, *children):
+        super().__init__()
         assert all(isinstance(c, BoolExpr) for c in children), breakpoint()
         self.children = list(children)
 
@@ -91,10 +114,12 @@ class And(BoolExpr):
         for c in self.children:
             (l, r) = ('(', ')') if isinstance(c, Or) else ('', '')
             lines.append(l + str(c) + r)
-        return ''.join(lines)
+        self._str_cache = ''.join(sorted(lines))
+        return self._str_cache
 
 class Or(BoolExpr):
     def __init__(self, *children):
+        super().__init__()
         assert all(isinstance(c, BoolExpr) for c in children), breakpoint()
         self.children = list(children)
 
@@ -137,16 +162,24 @@ class Or(BoolExpr):
         return 'Or(' + ','.join([repr(c) for c in self.children]) + ')'
 
     def __str__(self):
-        return '+'.join(str(c) for c in self.children)
+        subresults = [str(c) for c in self.children]
+        self._str_cache = '+'.join(str(c) for c in sorted(subresults))
+        return self._str_cache
 
 class Not(BoolExpr):
     def __init__(self, child):
+        super().__init__()
         assert isinstance(child, BoolExpr)
         self.children = [child]
 
     @property
     def child(self):
         return self.children[0]
+
+    @property
+    def name(self):
+        if self.is_literal():
+            return self.child.name
 
     def evaluate(self, values):
         sr = self.child.evaluate(values)
@@ -173,9 +206,6 @@ class Not(BoolExpr):
     def is_literal(self):
         return isinstance(self.child, Var)
 
-    def all_s(self):
-        return [self] + self.child.all_s()
-
     def clone(self):
         return Not(self.child.clone())
 
@@ -188,13 +218,15 @@ class Not(BoolExpr):
         return 'Not(' + repr(self.child) + ')'
 
     def __str__(self):
-        if isinstance(self.child, Var) or isinstance(self.child, Val):
-            return f'/{self.child}'
+        if self.child.is_literal():
+            self._str_cache = f'/{self.child}'
         else:
-            return f'/({self.child})'
+            self._str_cache = f'/({self.child})'
+        return self._str_cache
 
 class Var(BoolExpr):
     def __init__(self, name):
+        super().__init__()
         assert type(name) == str
         self.name = name
 
@@ -221,8 +253,17 @@ class Var(BoolExpr):
             return Val(bool(value))
         return self
 
+    def all_nodes(self):
+        return [self]
+
     def clone(self):
         return Var(self.name)
+
+    def replace_subtree(self, before, after):
+        if self._str_cache == before._str_cache:
+            return after
+        else:
+            return self
 
     def __eq__(self, other):
         if type(other) == str:
@@ -233,10 +274,12 @@ class Var(BoolExpr):
         return f'Var("{self.name}")'
 
     def __str__(self):
-        return self.name
+        self._str_cache = self.name
+        return self._str_cache
 
 class Val(BoolExpr):
     def __init__(self, value):
+        super().__init__()
         assert type(value) == bool
         self.value = value
 
@@ -252,14 +295,20 @@ class Val(BoolExpr):
     def omnitrue(self, names):
         return self
 
+    def all_nodes(self):
+        return [self]
+
     def clone(self):
         return Var(self.value)
 
-    def all_s(self):
-        return [self]
-
     def set_variable(self, name:str, value:bool):
         return self
+
+    def replace_subtree(self, before, after):
+        if self._str_cache == before._str_cache:
+            return after
+        else:
+            return self
 
     def __eq__(self, other):
         if type(other) == bool:
@@ -273,7 +322,8 @@ class Val(BoolExpr):
         return f'Val({self.value})'
 
     def __str__(self):
-        return {True:'T', False:'F'}[self.value]
+        self._str_cache = {True:'T', False:'F'}[self.value]
+        return self._str_cache
 
 if __name__ == '__main__':
     # values (True/False)
