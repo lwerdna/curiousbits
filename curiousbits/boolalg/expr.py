@@ -46,8 +46,12 @@ class BoolExpr(object):
     def clone(self):
         pass
 
-    # WARNING! str() must first be called on before, after to build cache
+    def syntactic_equality(self, other):
+        str(self)
+        str(other)
+        return self._str_cache == other._str_cache
 
+    # WARNING! str() must first be called on before, after to build cache
     # Var and Val (with no children) need to override
     def replace_subtree(self, before, after):
         if self._str_cache == before._str_cache:
@@ -55,6 +59,12 @@ class BoolExpr(object):
         else:
             self.children = [c.replace_subtree(before, after) for c in self.children]
             return self
+
+    def __py__(self):
+        pass
+
+    def __c__(self):
+        pass
 
     def __str_cached__(self):
         return self._str_cache
@@ -109,6 +119,12 @@ class And(BoolExpr):
     def __repr__(self):
         return 'And(' + ','.join([repr(c) for c in self.children]) + ')'
 
+    def __py__(self):
+        return ' and '.join([f'({c.__py__()})' if isinstance(c, Or) else c.__py__() for c in self.children])
+
+    def __c__(self):
+        return ' && '.join([f'({c.__c__()})' if isinstance(c, Or) else c.__c__() for c in self.children])
+
     def __str__(self):
         lines = []
         for c in self.children:
@@ -160,6 +176,12 @@ class Or(BoolExpr):
 
     def __repr__(self):
         return 'Or(' + ','.join([repr(c) for c in self.children]) + ')'
+
+    def __py__(self):
+        return ' or '.join([c.__py__() for c in self.children])
+
+    def __c__(self):
+        return ' || '.join([c.__c__() for c in self.children])
 
     def __str__(self):
         subresults = [str(c) for c in self.children]
@@ -217,6 +239,12 @@ class Not(BoolExpr):
     def __repr__(self):
         return 'Not(' + repr(self.child) + ')'
 
+    def __py__(self):
+        return f'not {self.child.__py__()}' if self.child.is_literal() else f'not ({self.child.__py__()})'
+
+    def __c__(self):
+        return f'!{self.child.__c__()}' if self.child.is_literal() else f'!({self.child.__c__()})'
+
     def __str__(self):
         if self.child.is_literal():
             self._str_cache = f'/{self.child}'
@@ -273,6 +301,12 @@ class Var(BoolExpr):
     def __repr__(self):
         return f'Var("{self.name}")'
 
+    def __py__(self):
+        return str(self)
+
+    def __c__(self):
+        return str(self)
+
     def __str__(self):
         self._str_cache = self.name
         return self._str_cache
@@ -321,6 +355,12 @@ class Val(BoolExpr):
     def __repr__(self):
         return f'Val({self.value})'
 
+    def __py__(self):
+        return str(self.value)
+
+    def __c__(self):
+        return {True:'true', False:'false'}[self.value]
+
     def __str__(self):
         self._str_cache = {True:'T', False:'F'}[self.value]
         return self._str_cache
@@ -344,13 +384,26 @@ if __name__ == '__main__':
     print(e2)
     assert id(e) != id(e2)
 
+    e = And(Or(Var('A'), Var('B')), Not(Or(Var('C'),Var('D'))))
+    assert e.__py__() == '(A or B) and not (C or D)'
+    assert e.__c__() == '(A || B) && !(C || D)'
+
     # test case for reduction
+    print('-------- synthesize XOR from truth table --------')
     e = Or(And(Var("B"),Val(True)),Or(And(Var("A"),Val(True)),Val(False)))
+    print(f'PYTHON: {e.__py__()}')
+    print(f'     C: {e.__c__()}')
+    assert e.__py__() == 'B and True or A and True or False'
     e2 = e.reduce()
     assert str(e2) in ['A+B', 'B+A']
+    assert e2.__py__() in ['A or B', 'B or A']
 
     # simple xor, e = A/B + /AB
+    print('-------- synthesize XOR from truth table --------')
     e = Or(And(Var('A'),Not(Var('B'))), And(Not(Var('A')),Var('B')))
+    print(f'PYTHON: {e.__py__()}')
+    print(f'     C: {e.__c__()}')
+    assert e.__py__() == 'A and not B or not A and B'
     for (a,b,expected) in [
         (0,0,0),
         (0,1,1),
@@ -363,9 +416,14 @@ if __name__ == '__main__':
         t = t.reduce()
         assert t == bool(expected)
 
+
     # adder, e = /A/BC + /AB/C + A/B/C + ABC
+    print('-------- synthesize ADDER from truth table --------')
     e = Or(And(Not(Var('A')),Not(Var('B')),Var('C')), And(Not(Var('A')),Var('B'),Not(Var('C'))), And(Var('A'),Not(Var('B')),Not(Var('C'))), And(Var('A'),Var('B'),Var('C')))
     print(e)
+    print(f'PYTHON: {e.__py__()}')
+    print(f'     C: {e.__c__()}')
+    assert e.__py__() == 'not A and not B and C or not A and B and not C or A and not B and not C or A and B and C'
     for (a,b,c,expected) in [
         (0,0,0,0),
         (0,0,1,1),
