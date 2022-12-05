@@ -171,9 +171,30 @@ def reversed_graph(G):
 # Return { A: B, ... } where B is the node where all outgoing paths from A
 # converge, or join. B exists for every A when graph is single-exit.
 def joins(G):
+    temp = None
+
+    # generate dummy node
+    NSE = not is_single_exit(G)
+    if NSE:
+        temp = next(f'temp{i}' for i in range(999999) if not f'temp{i}' in G.nodes)
+        for src in [n for n in G.nodes() if G.out_degree(n) == 0]:
+            G.add_edge(src, temp)
+
     rgraph = reversed_graph(G)
+    #draw(rgraph, '/tmp/reversed.svg', verbose=True)
     dtree = dominator_tree(rgraph)
-    return {b:a for (a,b) in dtree.edges}
+    #draw(dtree, '/tmp/dominator.svg', verbose=True)
+    if NSE:
+        G.remove_node(temp)
+
+    return {b:a for (a,b) in dtree.edges if a != temp and G.out_degree(b) > 1}
+
+#------------------------------------------------------------------------------
+# misc
+#------------------------------------------------------------------------------
+
+def is_single_exit(G):
+    return len([n for n in G.nodes if G.out_degree(n) == 0])==1
 
 #------------------------------------------------------------------------------
 # fixed test cases
@@ -213,6 +234,21 @@ def gen_test0():
 
     return G
 
+# no single exit, no join points
+def gen_test1():
+    G = nx.DiGraph()
+
+    G.add_edge('0', '1')
+    G.add_edge('0', '2')
+    G.add_edge('1', '3')
+    G.add_edge('1', '4')
+    G.add_edge('3', '5')
+    G.add_edge('3', '6')
+    G.add_edge('5', '7')
+    G.add_edge('5', '8')
+
+    return G
+
 #------------------------------------------------------------------------------
 # main/test
 #------------------------------------------------------------------------------
@@ -224,23 +260,54 @@ if __name__ == '__main__':
     G = gen_test0()
     draw(G, '/tmp/test0.svg', verbose=True)
 
-    # draw the test CFG, dominator tree
+    # draw the test0 CFG, dominator tree
     D = dominator_tree(G)
     draw(D, f'/tmp/test0-domtree.svg', verbose=True)
 
     # draw the test CFG, join points
+    assert joins(G) == {'1':'7', '2':'6'}
+
     red_edges = set()
     for a,b in joins(G).items():
         if G.out_degree(a) > 1:
             G.add_edge(a, b)
             red_edges.add((a, b))
-            
+
     def eattrs(G, a, b):
         if (a, b) in red_edges:
             return ['style="dashed"', 'color="red"']
         return []
 
     draw(G, '/tmp/test0-joins.svg', f_edge_attrs=eattrs, verbose=True)
+
+    # draw the test1 CFG, join points
+    G = gen_test1()
+    assert joins(G) == {}
+    G.add_edge('7', '9')
+    G.add_edge('8', '9')
+    assert joins(G) == {'5':'9'}
+    G.add_edge('3', '10')
+    G.add_edge('4', '10')
+    assert joins(G) == {'5':'9'}
+    G.add_edge('6', '11')
+    G.add_edge('10', '11')
+    assert joins(G) == {'5':'9'}
+    G.add_edge('11', '12')
+    G.add_edge('9', '12')
+    assert joins(G) == {'5':'9', '1':'12', '3':'12'}
+
+    red_edges = set()
+    for a,b in joins(G).items():
+        if G.out_degree(a) > 1:
+            G.add_edge(a, b)
+            red_edges.add((a, b))
+
+    def eattrs(G, a, b):
+        if (a, b) in red_edges:
+            return ['style="dashed"', 'color="red"']
+        return []
+
+    draw(G, '/tmp/test1-joins.svg', f_edge_attrs=eattrs, verbose=True)
 
     # draw the "dream" CFG
     G = gen_dream_R2()
