@@ -20,6 +20,7 @@ class BoolExpr(object):
 #        return Val(False)
     def __init__(self):
         self._str_cache = ''
+        self.children = []
 
     def varnames(self):
         result = set()
@@ -30,6 +31,11 @@ class BoolExpr(object):
     # Var and Not need to override
     def is_literal(self):
         return False
+
+    # Var, Not need to override
+    def omnitrue(self, names):
+        self.children = [c.omnitrue(names) for c in self.children]
+        return self
 
     # Var and Val need to override
     def set_variable(self, name:str, value:bool):
@@ -106,9 +112,6 @@ class And(BoolExpr):
                 self.children = tmp
                 return self
 
-    def omnitrue(self, names):
-        return And(*[c.omnitrue(names) for c in self.children])
-
     def clone(self):
         return And(*[c.clone() for c in self.children])
 
@@ -163,9 +166,6 @@ class Or(BoolExpr):
             case _:
                 self.children = tmp
                 return self
-
-    def omnitrue(self, names):
-        return Or(*[c.omnitrue(names) for c in self.children])
 
     def clone(self):
         return Or(*[c.clone() for c in self.children])
@@ -224,7 +224,7 @@ class Not(BoolExpr):
         if isinstance(self.child, Var) and self.child.name in names:
             return Val(True)
 
-        return Not(self.child.omnitrue(names))
+        return super().omnitrue(names)
 
     def is_literal(self):
         return isinstance(self.child, Var)
@@ -271,8 +271,8 @@ class Var(BoolExpr):
     def omnitrue(self, names):
         if self.name in names:
             return Val(True)
-        else:
-            return self
+
+        return super().omnitrue(names)
 
     def is_literal(self):
         return True
@@ -325,9 +325,6 @@ class Val(BoolExpr):
         return set()
 
     def reduce(self):
-        return self
-
-    def omnitrue(self, names):
         return self
 
     def all_nodes(self):
@@ -447,5 +444,24 @@ if __name__ == '__main__':
         t.set_variable('C', c)
         t = t.reduce()
         assert t == bool(expected)
+
+    print('-------- test omnitrue --------')
+    xor = Or(And(Var('A'),Not(Var('B'))), And(Not(Var('A')),Var('B')))
+
+    # make A and /A true
+    e = xor.clone()
+    e.omnitrue('A')
+    assert e.__py__() == 'True and not B or True and B'
+    e.reduce()
+    assert e.__py__() == 'not B or B'
+    #
+    e = Or(And(Var('A'),Not(Var('B'))), And(Not(Var('A')),Var('B')))
+
+    # make B and /B true
+    e = xor.clone()
+    e.omnitrue('B')
+    assert e.__py__() == 'A and True or not A and True'
+    e.reduce()
+    assert e.__py__() == 'A or not A'
 
     print('pass')
