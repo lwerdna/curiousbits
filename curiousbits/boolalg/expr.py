@@ -3,9 +3,13 @@
 # conventions:
 # all operations are in-place
 # if you want a new expression tree, do .clone() then an in-place operation
+# WARNING! you still must assign with in-place operations, like:
+#  e = e.reduce()
+# because the root node might change! eg:
+#  Or(Var('B'), True) -> Val(True)
 
 # evaluation is done with
-# one-shot evaluatoin is done with .evaluate()
+# one-shot evaluation is done with .evaluate()
 #
 # .set_variable(), .reduce()
 
@@ -95,21 +99,28 @@ class And(BoolExpr):
         return None
 
     def reduce(self):
-        tmp = [c.reduce() for c in self.children]
+        self.children = [c.reduce() for c in self.children]
 
-        # short-circuit eval
-        if any([c==False for c in tmp]):
+        # rule: annulment
+        if any([c == False for c in self.children]):
             return Val(False)
-        if all([c==True for c in tmp]):
-            return Val(True)
 
-        # collect children that aren't true
-        tmp = [c for c in tmp if c != True]
-        match len(tmp):
-            case 0: return Expr.true() # empty And is True like empty product is 1
-            case 1: return tmp[0]
+        # rule: identity
+        self.children = [c for c in self.children if c != True]
+
+        # rule: complement on literals
+        # (if X and /X are conjuncts, result is false)
+        lnodes = [c for c in self.children if c.is_literal()]
+        if len(lnodes) > 1:
+            strs = {str(n) for n in lnodes}
+            for name in [n.name for n in lnodes]:
+                if name in strs and '/'+name in strs:
+                    return Val(False)
+
+        match len(self.children):
+            case 0: return Val(True) # empty And is True like empty product is 1
+            case 1: return self.children[0]
             case _:
-                self.children = tmp
                 return self
 
     def clone(self):
@@ -150,21 +161,28 @@ class Or(BoolExpr):
         return None
 
     def reduce(self):
-        tmp = [c.reduce() for c in self.children]
+        self.children = [c.reduce() for c in self.children]
 
-        # if there's a single true being or'd, return true
-        if any([c==True for c in tmp]):
+        # rule: identity
+        if any([c==True for c in self.children]):
             return Val(True)
-        if all([c==False for c in tmp]):
-            return Val(False)
 
-        # collect children that aren't false
-        tmp = [c for c in tmp if c != False]
-        match len(tmp):
+        # rule: identity
+        self.children = [c for c in self.children if c != False]
+
+        # complement on literals
+        # (if X and /X are disjuncts, result is true)
+        lnodes = [c for c in self.children if c.is_literal()]
+        if len(lnodes) > 1:
+            strs = {str(n) for n in lnodes}
+            for name in [n.name for n in lnodes]:
+                if name in strs and '/'+name in strs:
+                    return Val(True)
+
+        match len(self.children):
             case 0: return Val(False) # empty Or is False like empty sum is 0
-            case 1: return tmp[0]
+            case 1: return self.children[0]
             case _:
-                self.children = tmp
                 return self
 
     def clone(self):
@@ -401,24 +419,26 @@ if __name__ == '__main__':
     assert e2.__py__() in ['A or B', 'B or A']
 
     # simple xor, e = A/B + /AB
-    print('-------- synthesize XOR from truth table --------')
-    e = Or(And(Var('A'),Not(Var('B'))), And(Not(Var('A')),Var('B')))
-    assert len(e.all_nodes()) == 9
-    print(f'PYTHON: {e.__py__()}')
-    print(f'     C: {e.__c__()}')
-    assert e.__py__() == 'A and not B or not A and B'
+    print('-------- test XOR evaluation --------')
+    xor = Or(And(Var('A'),Not(Var('B'))), And(Not(Var('A')),Var('B')))
+
+    assert len(xor.all_nodes()) == 9
+
+    print(f'PYTHON: {xor.__py__()}')
+    print(f'     C: {xor.__c__()}')
+    assert xor.__py__() == 'A and not B or not A and B'
+
     for (a,b,expected) in [
         (0,0,0),
         (0,1,1),
         (1,0,1),
         (1,1,0)
     ]:
-        t = e.clone()
-        t.set_variable('A', a)
-        t.set_variable('B', b)
-        t = t.reduce()
-        assert t == bool(expected)
-
+        e = xor.clone()
+        e.set_variable('A', a)
+        e.set_variable('B', b)
+        e = e.reduce()
+        assert e == bool(expected)
 
     # adder, e = /A/BC + /AB/C + A/B/C + ABC
     print('-------- synthesize ADDER from truth table --------')
@@ -445,23 +465,51 @@ if __name__ == '__main__':
         t = t.reduce()
         assert t == bool(expected)
 
+    print('-------- test annulment rule --------')
+    e = And(Var('X'), Val(False))
+    e = e.reduce()
+    assert e.__py__() == 'False'
+    e = Or(Var('X'), Val(True))
+    e = e.reduce()
+    assert e.__py__() == 'True'
+
+    print('-------- test identity rule --------')
+    e = And(Var('X'), Val(True))
+    e = e.reduce()
+    assert e.__py__() == 'X'
+    e = Or(Var('X'), Val(False))
+    e = e.reduce()
+    assert e.__py__() == 'X'
+
+    print('-------- test complement rule --------')
+    e = And(Var('X'), Not(Var('X')))
+    e = e.reduce()
+    assert e.__py__() == 'False'
+    e = Or(Var('X'), Not(Var('X')))
+    e = e.reduce()
+    assert e.__py__() == 'True'
+
     print('-------- test omnitrue --------')
-    xor = Or(And(Var('A'),Not(Var('B'))), And(Not(Var('A')),Var('B')))
 
     # make A and /A true
     e = xor.clone()
-    e.omnitrue('A')
+    e.omnitrue(['A'])
     assert e.__py__() == 'True and not B or True and B'
-    e.reduce()
-    assert e.__py__() == 'not B or B'
-    #
-    e = Or(And(Var('A'),Not(Var('B'))), And(Not(Var('A')),Var('B')))
+    e = e.reduce()
+    assert e.__py__() == 'True'
 
     # make B and /B true
     e = xor.clone()
-    e.omnitrue('B')
+    e.omnitrue(['B'])
     assert e.__py__() == 'A and True or not A and True'
-    e.reduce()
-    assert e.__py__() == 'A or not A'
+    e = e.reduce()
+    assert e.__py__() == 'True'
+
+    # make all vars true
+    e = xor.clone()
+    e.omnitrue(['A', 'B'])
+    assert e.__py__() == 'True and True or True and True'
+    e = e.reduce()
+    assert e.__py__() == 'True'
 
     print('pass')
