@@ -33,12 +33,13 @@ class BoolExpr(object):
 
     # Var and Val need to override
     def set_variable(self, name:str, value:bool):
+        # must reassign childen, because Var could return (replace themselves with) Val
         self.children = [c.set_variable(name, bool(value)) for c in self.children]
         return self
 
     # Var and Val need to override
     def all_nodes(self):
-        return sum([c for c in self.children], [self])
+        return sum([c.all_nodes() for c in self.children], [self])
 
     def reduce(self):
         pass
@@ -371,11 +372,13 @@ if __name__ == '__main__':
     print(e)
     print(repr(e))
     assert e == True
+    assert len(e.all_nodes()) == 1
 
     e = Val(False)
     print(e)
     print(repr(e))
     assert e == False
+    assert len(e.all_nodes()) == 1
 
     # single variables
     e = Var('A')
@@ -385,12 +388,14 @@ if __name__ == '__main__':
     assert id(e) != id(e2)
 
     e = And(Or(Var('A'), Var('B')), Not(Or(Var('C'),Var('D'))))
+    assert len(e.all_nodes()) == 8
     assert e.__py__() == '(A or B) and not (C or D)'
     assert e.__c__() == '(A || B) && !(C || D)'
 
     # test case for reduction
     print('-------- synthesize XOR from truth table --------')
     e = Or(And(Var("B"),Val(True)),Or(And(Var("A"),Val(True)),Val(False)))
+    assert len(e.all_nodes()) == 9
     print(f'PYTHON: {e.__py__()}')
     print(f'     C: {e.__c__()}')
     assert e.__py__() == 'B and True or A and True or False'
@@ -401,6 +406,7 @@ if __name__ == '__main__':
     # simple xor, e = A/B + /AB
     print('-------- synthesize XOR from truth table --------')
     e = Or(And(Var('A'),Not(Var('B'))), And(Not(Var('A')),Var('B')))
+    assert len(e.all_nodes()) == 9
     print(f'PYTHON: {e.__py__()}')
     print(f'     C: {e.__c__()}')
     assert e.__py__() == 'A and not B or not A and B'
@@ -420,6 +426,7 @@ if __name__ == '__main__':
     # adder, e = /A/BC + /AB/C + A/B/C + ABC
     print('-------- synthesize ADDER from truth table --------')
     e = Or(And(Not(Var('A')),Not(Var('B')),Var('C')), And(Not(Var('A')),Var('B'),Not(Var('C'))), And(Var('A'),Not(Var('B')),Not(Var('C'))), And(Var('A'),Var('B'),Var('C')))
+    assert len(e.all_nodes()) == 23
     print(e)
     print(f'PYTHON: {e.__py__()}')
     print(f'     C: {e.__c__()}')
