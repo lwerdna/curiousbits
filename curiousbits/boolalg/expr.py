@@ -349,7 +349,7 @@ class Val(BoolExpr):
         return [self]
 
     def clone(self):
-        return Var(self.value)
+        return Val(self.value)
 
     def set_variable(self, name:str, value:bool):
         return self

@@ -162,6 +162,38 @@ def dominator_tree(G):
 
     return T
 
+# return a dictionary:
+# { A: [ nodes that dominate A ],
+#   B: [ nodes that dominate B ],
+#   ...
+# }
+def dominators(G):
+    T = dominator_tree(G)
+
+    result = {}
+    for dominator in T.nodes:
+        for dominatee in nx.descendants(T, dominator):
+            result[dominatee] = result.get(dominatee, []) + [dominator]
+
+    return result
+
+def postdominators(G):
+    NSE = not is_single_exit(G)
+
+    if NSE:
+        temp = next(f'temp{i}' for i in range(999999) if not f'temp{i}' in G.nodes)
+        for src in [n for n in G.nodes() if G.out_degree(n) == 0]:
+            G.add_edge(src, temp)
+
+    result = dominators(reversed_graph(G))
+
+    if NSE:
+        G.remove_node(temp)
+        for n in result:
+            result[n].remove(temp)
+
+    return result
+
 def reversed_graph(G):
     T = nx.DiGraph()
     for (a,b) in G.edges():
@@ -255,6 +287,20 @@ def gen_test1():
 
 if __name__ == '__main__':
     import sys
+
+    print('-------- testing dominators, post-dominators')
+    G = gen_test0()
+    assert dominators(G) == {'6': ['1', '2'], '2': ['1'], '4': ['1', '2'], '3': ['1'], '7': ['1'], '5': ['1', '2']}
+    assert postdominators(G) == {'1': ['7'], '2': ['7', '6'], '4': ['7', '6'], '6': ['7'], '3': ['7'], '5': ['7', '6']}
+    G = gen_test1()
+    assert dominators(G) == {'3': ['0', '1'], '1': ['0'], '5': ['0', '1', '3'], '4': ['0', '1'], '8': ['0', '1', '3', '5'], '7': ['0', '1', '3', '5'], '6': ['0', '1', '3'], '2': ['0']}
+    assert postdominators(G) == {'6': [], '1': [], '3': [], '8': [], '5': [], '7': [], '4': [], '2': [], '0': []}
+
+    G = gen_dream_R2()
+    assert dominators(G) == {'n7': ['b1'], 'n4': ['b1'], 'b2': ['b1'], 'n6': ['b1', 'b2'], 'n5': ['b1']}
+    assert postdominators(G) == {'n4': ['n7', 'n5'], 'b2': ['n7'], 'n5': ['n7'], 'b1': ['n7'], 'n6': ['n7']}
+
+    print('-------- drawing, testing joins')
 
     # draw the test CFG
     G = gen_test0()
