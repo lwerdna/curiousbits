@@ -149,10 +149,18 @@ def find_root(G):
         raise Exception('cannot find root: multiple nodes with in degree 0')
     return candidates[0]
 
+def find_single_exit(G):
+    candidates = [n for n in G.nodes if G.out_degree(n) == 0]
+    if len(candidates) == 0:
+        raise Exception('cannot find single exit: no nodes with out degree 0')
+    if len(candidates) > 1:
+        raise Exception('cannot find single exit: multiple nodes with out degree 0')
+    return candidates[0]
+
 # compute the dominator tree
 # incoming graph must be rooted (must have an entry node) marked by having a single node with degree 0
 # https://en.wikipedia.org/wiki/Rooted_graph
-def dominator_tree(G):
+def compute_dominator_tree(G):
     T = nx.DiGraph()
 
     root_node = find_root(G)
@@ -169,15 +177,15 @@ def dominator_tree(G):
 
 # compute the postdominator tree
 # if the incoming graph does not have a single exit, a temporary node will be added
-def postdominator_tree(G):
+def compute_postdominator_tree(G):
     G = G.copy()
 
+    # add single exit if needed
     if not is_single_exit(G):
-        temp = next(f'temp{i}' for i in range(999999) if not f'temp{i}' in G.nodes)
-        for src in [n for n in G.nodes() if G.out_degree(n) == 0]:
-            G.add_edge(src, temp)
+        G = G.copy()
+        add_single_exit(G)
 
-    return dominator_tree(reversed_graph(G))
+    return compute_dominator_tree(reverse_graph(G))
 
 # return a dictionary:
 # { A: [ nodes that dominate A ],
@@ -186,8 +194,8 @@ def postdominator_tree(G):
 # }
 #
 # this is a non-strict version: node N is considered a dominator of node N
-def dominators(G):
-    T = dominator_tree(G)
+def compute_dominators(G):
+    T = compute_dominator_tree(G)
 
     result = {n:{n} for n in G}
     for dominator in T.nodes:
@@ -203,13 +211,12 @@ def dominators(G):
 # }
 #
 # this is a non-strict version: node N is considered a postdominator of node N
-def postdominators(G):
-    T = postdominator_tree(G)
+def compute_postdominators(G):
+    T = compute_postdominator_tree(G)
 
     R = find_root(T)
 
-    #if re.match(r'^temp\d+$', R):
-    if R.startswith('temp') and R[-1].isdigit():
+    if is_temporary_node(R):
         T.remove_node(R)
 
     result = {n:{n} for n in G}
@@ -219,7 +226,7 @@ def postdominators(G):
 
     return result
 
-def reversed_graph(G):
+def reverse_graph(G):
     T = nx.DiGraph()
     for (a,b) in G.edges():
         T.add_edge(b, a)
@@ -227,14 +234,47 @@ def reversed_graph(G):
 
 # Return { A: B, ... } where B is the node where all outgoing paths from A
 # converge, or join. B exists for every A when graph is single-exit.
-def joins(G):
-    T = postdominator_tree(G)
+def compute_joins(G):
+    T = compute_postdominator_tree(G)
 
     R = find_root(T)
-    if R.startswith('temp') and R[-1].isdigit():
+    if is_temporary_node(R):
         T.remove_node(R)
 
     return {b:a for (a,b) in T.edges}
+
+def compute_control_dependency_graph(G, verbose=False):
+    if not is_single_exit(G):
+        G = G.copy()
+        add_single_exit(G)
+
+    postdoms = compute_postdominators(G)
+
+    result = nx.DiGraph()
+    temp_node = gen_temporary_node(G)
+    result.add_edge(temp_node, find_root(G))
+    result.add_edge(temp_node, find_single_exit(G))
+
+    for n in G.nodes:
+        children = list(G.successors(n))
+
+        candidates = set()
+        for c in children:
+            candidates = candidates.union({spd for spd in postdoms[c] if spd != n})
+
+        if verbose:
+            print(f'node {n} has children {children} and candidates {candidates}')
+        for dependent in candidates:
+            if not all(dependent in postdoms[c] for c in children):
+                result.add_edge(n, dependent)
+                if verbose:
+                    print(f'candidate {dependent} passes! adding result edge {n}->{dependent}')
+            else:
+                if verbose:
+                    print(f'candidate {dependent} skipped because it post-dominates all children of {n}')
+                pass
+
+    return result
 
 #------------------------------------------------------------------------------
 # misc
@@ -242,6 +282,28 @@ def joins(G):
 
 def is_single_exit(G):
     return len([n for n in G.nodes if G.out_degree(n) == 0])==1
+
+def gen_temporary_node(G):
+    return next(f'nxt_temp{i}' for i in range(999999) if not f'nxt_temp{i}' in G.nodes)
+
+def is_temporary_node(n):
+    #if re.match(r'^temp\d+$', R):
+    return n.startswith('nxt_temp') and n[-1].isdigit()
+
+# edits in-place (make an explicit copy if needed)
+def add_single_exit(G):
+    leaves = [n for n in G.nodes() if G.out_degree(n) == 0]
+
+    if len(leaves) == 0:
+        raise Exception('cannot add single exit: no nodes with out degree 0')
+    elif len(leaves) == 1:
+        raise Exception('cannot add single exit: already exists')
+
+    exit_node = gen_temporary_node(G)
+    for leaf in leaves:
+        G.add_edge(leaf, exit_node)
+
+    return G
 
 #------------------------------------------------------------------------------
 # fixed test cases
@@ -322,38 +384,46 @@ if __name__ == '__main__':
 
     do_draw = '--draw' in sys.argv
 
+    # one-off stuff
+    if 0:
+        sys.exit(0)
+
     print('-------- testing dominators, post-dominators')
     G = gen_test0()
+    assert compute_dominators(G) == {'6':{'6','1','2'}, '2':{'2','1'}, '4':{'4','1','2'}, '3':{'3','1'}, '7':{'7','1'}, '5':{'5','1','2'}, '1':{'1'}}
+    assert compute_postdominators(G) == {'1':{'1','7'}, '2':{'2','7','6'}, '4':{'4','7','6'}, '6':{'6','7'}, '3':{'3','7'}, '5':{'5','7','6'}, '7':{'7'}}
     if do_draw:
         draw(G, '/tmp/test0.svg', verbose=True)
-    assert dominators(G) == {'6':{'6','1','2'}, '2':{'2','1'}, '4':{'4','1','2'}, '3':{'3','1'}, '7':{'7','1'}, '5':{'5','1','2'}, '1':{'1'}}
-    assert postdominators(G) == {'1':{'1','7'}, '2':{'2','7','6'}, '4':{'4','7','6'}, '6':{'6','7'}, '3':{'3','7'}, '5':{'5','7','6'}, '7':{'7'}}
+        draw(compute_control_dependency_graph(G), '/tmp/test0-cdg.svg', verbose=True)
 
     G = gen_test1()
+    assert compute_dominators(G) == {'3':{'3','0','1'}, '1':{'1','0'}, '5':{'5','0', '1', '3'}, '4':{'4','0', '1'}, '8':{'8','0', '1', '3', '5'}, '7':{'7','0', '1', '3', '5'}, '6':{'6','0', '1', '3'}, '2':{'2','0'}, '0':{'0'}}
+    assert compute_postdominators(G) == {'6':{'6'}, '1':{'1'}, '3':{'3'}, '8':{'8'}, '5':{'5'}, '7':{'7'}, '4':{'4'}, '2':{'2'}, '0':{'0'}}
     if do_draw:
         draw(G, '/tmp/test1.svg', verbose=True)
-    assert dominators(G) == {'3':{'3','0','1'}, '1':{'1','0'}, '5':{'5','0', '1', '3'}, '4':{'4','0', '1'}, '8':{'8','0', '1', '3', '5'}, '7':{'7','0', '1', '3', '5'}, '6':{'6','0', '1', '3'}, '2':{'2','0'}, '0':{'0'}}
-    assert postdominators(G) == {'6':{'6'}, '1':{'1'}, '3':{'3'}, '8':{'8'}, '5':{'5'}, '7':{'7'}, '4':{'4'}, '2':{'2'}, '0':{'0'}}
+        draw(compute_control_dependency_graph(G), '/tmp/test0-cdg.svg', verbose=True)
 
     G = gen_dream_R2()
+    assert compute_dominators(G) == {'n7':{'n7','b1'}, 'n4':{'n4','b1'}, 'b2':{'b2','b1'}, 'n6':{'n6','b1', 'b2'}, 'n5':{'n5','b1'}, 'b1':{'b1'}}
+    assert compute_postdominators(G) == {'n4':{'n4','n7', 'n5'}, 'b2':{'b2','n7'}, 'n5':{'n5','n7'}, 'b1':{'b1','n7'}, 'n6':{'n6','n7'}, 'n7':{'n7'}}
     if do_draw:
         draw(G, '/tmp/dream_r2.svg', verbose=True)
-    assert dominators(G) == {'n7':{'n7','b1'}, 'n4':{'n4','b1'}, 'b2':{'b2','b1'}, 'n6':{'n6','b1', 'b2'}, 'n5':{'n5','b1'}, 'b1':{'b1'}}
-    assert postdominators(G) == {'n4':{'n4','n7', 'n5'}, 'b2':{'b2','n7'}, 'n5':{'n5','n7'}, 'b1':{'b1','n7'}, 'n6':{'n6','n7'}, 'n7':{'n7'}}
+        draw(compute_control_dependency_graph(G), '/tmp/dream_r2-cdg.svg', verbose=True)
 
     G = gen_test2()
+    assert compute_dominators(G) == {'START':{'START'}, 'a':{'a','START'}, 'END':{'END','START'}, 'b':{'b','START', 'a'}, 'c':{'c','START', 'a'}, 'd':{'d','START', 'a', 'c'}, 'e':{'e','START', 'a', 'c'}, 'f':{'f','START', 'a', 'c'}, 'g':{'g','START', 'a', 'c', 'f'}}
+    assert compute_postdominators(G) == {'START':{'START','END'}, 'a':{'a','END', 'g', 'f', 'c'}, 'END':{'END','END'}, 'b':{'b','END', 'g', 'f', 'c'}, 'c':{'c','END', 'g', 'f'}, 'd':{'d','END', 'g', 'f'}, 'e':{'e','END', 'g', 'f'}, 'f':{'f','END', 'g'}, 'g':{'g','END'}}
     if do_draw:
         draw(G, '/tmp/test2.svg', verbose=True)
-    assert dominators(G) == {'START':{'START'}, 'a':{'a','START'}, 'END':{'END','START'}, 'b':{'b','START', 'a'}, 'c':{'c','START', 'a'}, 'd':{'d','START', 'a', 'c'}, 'e':{'e','START', 'a', 'c'}, 'f':{'f','START', 'a', 'c'}, 'g':{'g','START', 'a', 'c', 'f'}}
-    assert postdominators(G) == {'START':{'START','END'}, 'a':{'a','END', 'g', 'f', 'c'}, 'END':{'END','END'}, 'b':{'b','END', 'g', 'f', 'c'}, 'c':{'c','END', 'g', 'f'}, 'd':{'d','END', 'g', 'f'}, 'e':{'e','END', 'g', 'f'}, 'f':{'f','END', 'g'}, 'g':{'g','END'}}
+        draw(compute_control_dependency_graph(G), '/tmp/test2-cdg.svg', verbose=True)
 
     print('-------- testing join points')
 
     G = gen_test0()
-    assert joins(G) == {'6': '7', '3': '7', '1': '7', '5': '6', '4': '6', '2': '6'}
+    assert compute_joins(G) == {'6': '7', '3': '7', '1': '7', '5': '6', '4': '6', '2': '6'}
 
     red_edges = set()
-    for a,b in joins(G).items():
+    for a,b in compute_joins(G).items():
         if G.out_degree(a) > 1:
             G.add_edge(a, b)
             red_edges.add((a, b))
@@ -368,22 +438,22 @@ if __name__ == '__main__':
 
     # draw the test1 CFG, join points
     G = gen_test1()
-    assert joins(G) == {}
+    assert compute_joins(G) == {}
     G.add_edge('7', '9')
     G.add_edge('8', '9')
-    assert joins(G) == {'8': '9', '7': '9', '5': '9'}
+    assert compute_joins(G) == {'8': '9', '7': '9', '5': '9'}
     G.add_edge('3', '10')
     G.add_edge('4', '10')
-    assert joins(G) == {'4': '10', '8': '9', '7': '9', '5': '9'}
+    assert compute_joins(G) == {'4': '10', '8': '9', '7': '9', '5': '9'}
     G.add_edge('6', '11')
     G.add_edge('10', '11')
-    assert joins(G) == {'10': '11', '6': '11', '4': '10', '8': '9', '7': '9', '5': '9'}
+    assert compute_joins(G) == {'10': '11', '6': '11', '4': '10', '8': '9', '7': '9', '5': '9'}
     G.add_edge('11', '12')
     G.add_edge('9', '12')
-    assert joins(G) == {'11': '12', '9': '12', '3': '12', '1': '12', '10': '11', '6': '11', '4': '10', '8': '9', '7': '9', '5': '9'}
+    assert compute_joins(G) == {'11': '12', '9': '12', '3': '12', '1': '12', '10': '11', '6': '11', '4': '10', '8': '9', '7': '9', '5': '9'}
 
     red_edges = set()
-    for a,b in joins(G).items():
+    for a,b in compute_joins(G).items():
         if G.out_degree(a) > 1:
             G.add_edge(a, b)
             red_edges.add((a, b))
