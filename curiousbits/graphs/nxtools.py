@@ -228,23 +228,13 @@ def reversed_graph(G):
 # Return { A: B, ... } where B is the node where all outgoing paths from A
 # converge, or join. B exists for every A when graph is single-exit.
 def joins(G):
-    temp = None
+    T = postdominator_tree(G)
 
-    # generate dummy node
-    NSE = not is_single_exit(G)
-    if NSE:
-        temp = next(f'temp{i}' for i in range(999999) if not f'temp{i}' in G.nodes)
-        for src in [n for n in G.nodes() if G.out_degree(n) == 0]:
-            G.add_edge(src, temp)
+    R = find_root(T)
+    if R.startswith('temp') and R[-1].isdigit():
+        T.remove_node(R)
 
-    rgraph = reversed_graph(G)
-    #draw(rgraph, '/tmp/reversed.svg', verbose=True)
-    dtree = dominator_tree(rgraph)
-    #draw(dtree, '/tmp/dominator.svg', verbose=True)
-    if NSE:
-        G.remove_node(temp)
-
-    return {b:a for (a,b) in dtree.edges if a != temp and G.out_degree(b) > 1}
+    return {b:a for (a,b) in T.edges}
 
 #------------------------------------------------------------------------------
 # misc
@@ -360,7 +350,7 @@ if __name__ == '__main__':
     print('-------- testing join points')
 
     G = gen_test0()
-    assert joins(G) == {'1':'7', '2':'6'}
+    assert joins(G) == {'6': '7', '3': '7', '1': '7', '5': '6', '4': '6', '2': '6'}
 
     red_edges = set()
     for a,b in joins(G).items():
@@ -381,16 +371,16 @@ if __name__ == '__main__':
     assert joins(G) == {}
     G.add_edge('7', '9')
     G.add_edge('8', '9')
-    assert joins(G) == {'5':'9'}
+    assert joins(G) == {'8': '9', '7': '9', '5': '9'}
     G.add_edge('3', '10')
     G.add_edge('4', '10')
-    assert joins(G) == {'5':'9'}
+    assert joins(G) == {'4': '10', '8': '9', '7': '9', '5': '9'}
     G.add_edge('6', '11')
     G.add_edge('10', '11')
-    assert joins(G) == {'5':'9'}
+    assert joins(G) == {'10': '11', '6': '11', '4': '10', '8': '9', '7': '9', '5': '9'}
     G.add_edge('11', '12')
     G.add_edge('9', '12')
-    assert joins(G) == {'5':'9', '1':'12', '3':'12'}
+    assert joins(G) == {'11': '12', '9': '12', '3': '12', '1': '12', '10': '11', '6': '11', '4': '10', '8': '9', '7': '9', '5': '9'}
 
     red_edges = set()
     for a,b in joins(G).items():
