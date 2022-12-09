@@ -76,7 +76,7 @@ def draw(G, fpath, f_node_attrs=None, f_edge_attrs=None, f_extra=None, verbose=F
 # generate graphs
 #------------------------------------------------------------------------------
 
-# CFG with single entry, single successor (SESE)
+# CFG with single entry, single exit (SESE)
 # https://en.wikipedia.org/wiki/Single-entry_single-exit
 def gen_SESE(num_nodes):
     G = nx.gnp_random_graph(num_nodes, 2*1/num_nodes, seed=None, directed=True)
@@ -159,7 +159,6 @@ def dominator_tree(G):
 
     for (b, a) in nx.immediate_dominators(G, root_node).items():
         T.add_node(b)
-        T.nodes[b]['label'] = G.nodes[b].get('label', str(b))
 
         if a == b:
             continue
@@ -185,13 +184,15 @@ def postdominator_tree(G):
 #   B: [ nodes that dominate B ],
 #   ...
 # }
+#
+# this is a non-strict version: node N is considered a dominator of node N
 def dominators(G):
     T = dominator_tree(G)
 
-    result = {n:[] for n in G}
+    result = {n:{n} for n in G}
     for dominator in T.nodes:
         for dominatee in nx.descendants(T, dominator):
-            result[dominatee].append(dominator)
+            result[dominatee].add(dominator)
 
     return result
 
@@ -200,6 +201,8 @@ def dominators(G):
 #   B: [ nodes that postdominate B ],
 #   ...
 # }
+#
+# this is a non-strict version: node N is considered a postdominator of node N
 def postdominators(G):
     T = postdominator_tree(G)
 
@@ -209,10 +212,10 @@ def postdominators(G):
     if R.startswith('temp') and R[-1].isdigit():
         T.remove_node(R)
 
-    result = {n:[] for n in G}
+    result = {n:{n} for n in G}
     for dominator in T.nodes:
         for dominatee in nx.descendants(T, dominator):
-            result[dominatee].append(dominator)
+            result[dominatee].add(dominator)
 
     return result
 
@@ -327,42 +330,36 @@ def gen_test2():
 if __name__ == '__main__':
     import sys
 
-    G = gen_test2()
-    draw(G, '/tmp/test2.svg', verbose=True)
-    T = postdominator_tree(G)
-    draw(T, '/tmp/test2-postdom.svg', verbose=True)
-    sys.exit(0)
+    do_draw = '--draw' in sys.argv
 
     print('-------- testing dominators, post-dominators')
     G = gen_test0()
-    assert dominators(G) == {'6':['1', '2'], '2':['1'], '4':['1', '2'], '3':['1'], '7':['1'], '5':['1', '2'], '1':[]}
-    assert postdominators(G) == {'1':['7'], '2':['7', '6'], '4':['7', '6'], '6':['7'], '3':['7'], '5':['7', '6'], '7':[]}
+    if do_draw:
+        draw(G, '/tmp/test0.svg', verbose=True)
+    assert dominators(G) == {'6':{'6','1','2'}, '2':{'2','1'}, '4':{'4','1','2'}, '3':{'3','1'}, '7':{'7','1'}, '5':{'5','1','2'}, '1':{'1'}}
+    assert postdominators(G) == {'1':{'1','7'}, '2':{'2','7','6'}, '4':{'4','7','6'}, '6':{'6','7'}, '3':{'3','7'}, '5':{'5','7','6'}, '7':{'7'}}
 
     G = gen_test1()
-    assert dominators(G) == {'3':['0', '1'], '1':['0'], '5':['0', '1', '3'], '4':['0', '1'], '8':['0', '1', '3', '5'], '7':['0', '1', '3', '5'], '6':['0', '1', '3'], '2':['0'], '0':[]}
-    assert postdominators(G) == {'6':[], '1':[], '3':[], '8':[], '5':[], '7':[], '4':[], '2':[], '0':[]}
+    if do_draw:
+        draw(G, '/tmp/test1.svg', verbose=True)
+    assert dominators(G) == {'3':{'3','0','1'}, '1':{'1','0'}, '5':{'5','0', '1', '3'}, '4':{'4','0', '1'}, '8':{'8','0', '1', '3', '5'}, '7':{'7','0', '1', '3', '5'}, '6':{'6','0', '1', '3'}, '2':{'2','0'}, '0':{'0'}}
+    assert postdominators(G) == {'6':{'6'}, '1':{'1'}, '3':{'3'}, '8':{'8'}, '5':{'5'}, '7':{'7'}, '4':{'4'}, '2':{'2'}, '0':{'0'}}
 
     G = gen_dream_R2()
-    assert dominators(G) == {'n7':['b1'], 'n4':['b1'], 'b2':['b1'], 'n6':['b1', 'b2'], 'n5':['b1'], 'b1':[]}
-    assert postdominators(G) == {'n4':['n7', 'n5'], 'b2':['n7'], 'n5':['n7'], 'b1':['n7'], 'n6':['n7'], 'n7':[]}
+    if do_draw:
+        draw(G, '/tmp/dream_r2.svg', verbose=True)
+    assert dominators(G) == {'n7':{'n7','b1'}, 'n4':{'n4','b1'}, 'b2':{'b2','b1'}, 'n6':{'n6','b1', 'b2'}, 'n5':{'n5','b1'}, 'b1':{'b1'}}
+    assert postdominators(G) == {'n4':{'n4','n7', 'n5'}, 'b2':{'b2','n7'}, 'n5':{'n5','n7'}, 'b1':{'b1','n7'}, 'n6':{'n6','n7'}, 'n7':{'n7'}}
 
-    print('-------- drawing, testing joins')
+    G = gen_test2()
+    if do_draw:
+        draw(G, '/tmp/test2.svg', verbose=True)
+    assert dominators(G) == {'START':{'START'}, 'a':{'a','START'}, 'END':{'END','START'}, 'b':{'b','START', 'a'}, 'c':{'c','START', 'a'}, 'd':{'d','START', 'a', 'c'}, 'e':{'e','START', 'a', 'c'}, 'f':{'f','START', 'a', 'c'}, 'g':{'g','START', 'a', 'c', 'f'}}
+    assert postdominators(G) == {'START':{'START','END'}, 'a':{'a','END', 'g', 'f', 'c'}, 'END':{'END','END'}, 'b':{'b','END', 'g', 'f', 'c'}, 'c':{'c','END', 'g', 'f'}, 'd':{'d','END', 'g', 'f'}, 'e':{'e','END', 'g', 'f'}, 'f':{'f','END', 'g'}, 'g':{'g','END'}}
 
-    # draw the "dream" CFG
-    G = gen_dream_R2()
-    draw(G, '/tmp/dream_r2.svg', verbose=True)
+    print('-------- testing join points')
 
-    sys.exit(0)
-
-    # draw the test CFG
     G = gen_test0()
-    draw(G, '/tmp/test0.svg', verbose=True)
-
-    # draw the test0 CFG, dominator tree
-    D = dominator_tree(G)
-    draw(D, f'/tmp/test0-domtree.svg', verbose=True)
-
-    # draw the test CFG, join points
     assert joins(G) == {'1':'7', '2':'6'}
 
     red_edges = set()
@@ -376,7 +373,8 @@ if __name__ == '__main__':
             return ['style="dashed"', 'color="red"']
         return []
 
-    draw(G, '/tmp/test0-joins.svg', f_edge_attrs=eattrs, verbose=True)
+    if do_draw:
+        draw(G, '/tmp/test0-joins.svg', f_edge_attrs=eattrs, verbose=True)
 
     # draw the test1 CFG, join points
     G = gen_test1()
@@ -405,9 +403,11 @@ if __name__ == '__main__':
             return ['style="dashed"', 'color="red"']
         return []
 
-    draw(G, '/tmp/test1-joins.svg', f_edge_attrs=eattrs, verbose=True)
+    if do_draw:
+        draw(G, '/tmp/test1-joins.svg', f_edge_attrs=eattrs, verbose=True)
 
     # draw some randomly generated single-entry, single-exit CFG's
     for i in range(4):
         G = gen_SESE(16)
-        draw(G, f'/tmp/generated{i}.svg', verbose=True)
+        if do_draw:
+            draw(G, f'/tmp/generated{i}.svg', verbose=True)
