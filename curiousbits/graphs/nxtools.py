@@ -141,17 +141,23 @@ def gen_SESE(num_nodes):
 # graph computation
 #------------------------------------------------------------------------------
 
+def find_root(G):
+    candidates = [n for n in G.nodes if G.in_degree(n) == 0]
+    if len(candidates) == 0:
+        raise Exception('cannot find root: no nodes with in degree 0')
+    if len(candidates) > 1:
+        raise Exception('cannot find root: multiple nodes with in degree 0')
+    return candidates[0]
+
 # compute the dominator tree
 # incoming graph must be rooted (must have an entry node) marked by having a single node with degree 0
 # https://en.wikipedia.org/wiki/Rooted_graph
 def dominator_tree(G):
     T = nx.DiGraph()
 
-    dzeros = [n for n in G.nodes if G.in_degree(n) == 0]
-    assert len(dzeros) == 1
-    root = dzeros[0]
+    root_node = find_root(G)
 
-    for (b, a) in nx.immediate_dominators(G, root).items():
+    for (b, a) in nx.immediate_dominators(G, root_node).items():
         T.add_node(b)
         T.nodes[b]['label'] = G.nodes[b].get('label', str(b))
 
@@ -162,6 +168,18 @@ def dominator_tree(G):
 
     return T
 
+# compute the postdominator tree
+# if the incoming graph does not have a single exit, a temporary node will be added
+def postdominator_tree(G):
+    G = G.copy()
+
+    if not is_single_exit(G):
+        temp = next(f'temp{i}' for i in range(999999) if not f'temp{i}' in G.nodes)
+        for src in [n for n in G.nodes() if G.out_degree(n) == 0]:
+            G.add_edge(src, temp)
+
+    return dominator_tree(reversed_graph(G))
+
 # return a dictionary:
 # { A: [ nodes that dominate A ],
 #   B: [ nodes that dominate B ],
@@ -170,27 +188,31 @@ def dominator_tree(G):
 def dominators(G):
     T = dominator_tree(G)
 
-    result = {}
+    result = {n:[] for n in G}
     for dominator in T.nodes:
         for dominatee in nx.descendants(T, dominator):
-            result[dominatee] = result.get(dominatee, []) + [dominator]
+            result[dominatee].append(dominator)
 
     return result
 
+# return a dictionary:
+# { A: [ nodes that postdominate A ],
+#   B: [ nodes that postdominate B ],
+#   ...
+# }
 def postdominators(G):
-    NSE = not is_single_exit(G)
+    T = postdominator_tree(G)
 
-    if NSE:
-        temp = next(f'temp{i}' for i in range(999999) if not f'temp{i}' in G.nodes)
-        for src in [n for n in G.nodes() if G.out_degree(n) == 0]:
-            G.add_edge(src, temp)
+    R = find_root(T)
 
-    result = dominators(reversed_graph(G))
+    #if re.match(r'^temp\d+$', R):
+    if R.startswith('temp') and R[-1].isdigit():
+        T.remove_node(R)
 
-    if NSE:
-        G.remove_node(temp)
-        for n in result:
-            result[n].remove(temp)
+    result = {n:[] for n in G}
+    for dominator in T.nodes:
+        for dominatee in nx.descendants(T, dominator):
+            result[dominatee].append(dominator)
 
     return result
 
@@ -281,6 +303,23 @@ def gen_test1():
 
     return G
 
+# from Optimal Control Dependence Computation and the Roman Chariots Problem -Pingali, Bilardi
+def gen_test2():
+    G = nx.DiGraph()
+    G.add_edge('START', 'a')
+    G.add_edge('START', 'END')
+    G.add_edge('a', 'b')
+    G.add_edge('a', 'c')
+    G.add_edge('b', 'c')
+    G.add_edge('c', 'd')
+    G.add_edge('c', 'e')
+    G.add_edge('d', 'f')
+    G.add_edge('e', 'f')
+    G.add_edge('f', 'b')
+    G.add_edge('f', 'g')
+    G.add_edge('g', 'END')
+    return G
+
 #------------------------------------------------------------------------------
 # main/test
 #------------------------------------------------------------------------------
@@ -288,19 +327,32 @@ def gen_test1():
 if __name__ == '__main__':
     import sys
 
+    G = gen_test2()
+    draw(G, '/tmp/test2.svg', verbose=True)
+    T = postdominator_tree(G)
+    draw(T, '/tmp/test2-postdom.svg', verbose=True)
+    sys.exit(0)
+
     print('-------- testing dominators, post-dominators')
     G = gen_test0()
-    assert dominators(G) == {'6': ['1', '2'], '2': ['1'], '4': ['1', '2'], '3': ['1'], '7': ['1'], '5': ['1', '2']}
-    assert postdominators(G) == {'1': ['7'], '2': ['7', '6'], '4': ['7', '6'], '6': ['7'], '3': ['7'], '5': ['7', '6']}
+    assert dominators(G) == {'6':['1', '2'], '2':['1'], '4':['1', '2'], '3':['1'], '7':['1'], '5':['1', '2'], '1':[]}
+    assert postdominators(G) == {'1':['7'], '2':['7', '6'], '4':['7', '6'], '6':['7'], '3':['7'], '5':['7', '6'], '7':[]}
+
     G = gen_test1()
-    assert dominators(G) == {'3': ['0', '1'], '1': ['0'], '5': ['0', '1', '3'], '4': ['0', '1'], '8': ['0', '1', '3', '5'], '7': ['0', '1', '3', '5'], '6': ['0', '1', '3'], '2': ['0']}
-    assert postdominators(G) == {'6': [], '1': [], '3': [], '8': [], '5': [], '7': [], '4': [], '2': [], '0': []}
+    assert dominators(G) == {'3':['0', '1'], '1':['0'], '5':['0', '1', '3'], '4':['0', '1'], '8':['0', '1', '3', '5'], '7':['0', '1', '3', '5'], '6':['0', '1', '3'], '2':['0'], '0':[]}
+    assert postdominators(G) == {'6':[], '1':[], '3':[], '8':[], '5':[], '7':[], '4':[], '2':[], '0':[]}
 
     G = gen_dream_R2()
-    assert dominators(G) == {'n7': ['b1'], 'n4': ['b1'], 'b2': ['b1'], 'n6': ['b1', 'b2'], 'n5': ['b1']}
-    assert postdominators(G) == {'n4': ['n7', 'n5'], 'b2': ['n7'], 'n5': ['n7'], 'b1': ['n7'], 'n6': ['n7']}
+    assert dominators(G) == {'n7':['b1'], 'n4':['b1'], 'b2':['b1'], 'n6':['b1', 'b2'], 'n5':['b1'], 'b1':[]}
+    assert postdominators(G) == {'n4':['n7', 'n5'], 'b2':['n7'], 'n5':['n7'], 'b1':['n7'], 'n6':['n7'], 'n7':[]}
 
     print('-------- drawing, testing joins')
+
+    # draw the "dream" CFG
+    G = gen_dream_R2()
+    draw(G, '/tmp/dream_r2.svg', verbose=True)
+
+    sys.exit(0)
 
     # draw the test CFG
     G = gen_test0()
@@ -354,10 +406,6 @@ if __name__ == '__main__':
         return []
 
     draw(G, '/tmp/test1-joins.svg', f_edge_attrs=eattrs, verbose=True)
-
-    # draw the "dream" CFG
-    G = gen_dream_R2()
-    draw(G, '/tmp/dream_r2.svg', verbose=True)
 
     # draw some randomly generated single-entry, single-exit CFG's
     for i in range(4):
