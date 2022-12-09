@@ -248,6 +248,7 @@ def compute_control_dependency_graph(G, verbose=False):
         G = G.copy()
         add_single_exit(G)
 
+    dominators = compute_dominators(G)
     postdoms = compute_postdominators(G)
 
     result = nx.DiGraph()
@@ -266,9 +267,13 @@ def compute_control_dependency_graph(G, verbose=False):
             print(f'node {n} has children {children} and candidates {candidates}')
         for dependent in candidates:
             if not all(dependent in postdoms[c] for c in children):
-                result.add_edge(n, dependent)
-                if verbose:
-                    print(f'candidate {dependent} passes! adding result edge {n}->{dependent}')
+                if dependent in dominators[n]:
+                    if verbose:
+                        print(f'candidate {dependent} passes, skipping since it dominates {n} (is there a loop?)')
+                else:
+                    result.add_edge(n, dependent)
+                    if verbose:
+                        print(f'candidate {dependent} passes! adding result edge {n}->{dependent}')
             else:
                 if verbose:
                     print(f'candidate {dependent} skipped because it post-dominates all children of {n}')
@@ -386,6 +391,9 @@ if __name__ == '__main__':
 
     # one-off stuff
     if 0:
+        G = gen_test2()
+        compute_control_dependency_graph(G, verbose=True)
+        draw(compute_postdominator_tree(G), '/tmp/test2-postdoms.svg', verbose=True)
         sys.exit(0)
 
     print('-------- testing dominators, post-dominators')
