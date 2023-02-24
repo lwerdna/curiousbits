@@ -281,6 +281,43 @@ def compute_control_dependency_graph(G, verbose=False):
 
     return result
 
+def compute_reaching_conditions(CFG):
+    from ..boolalg import expr
+
+    R = find_root(CFG)
+
+    CDG = compute_control_dependency_graph(CFG)
+
+    rsult = {n: expr.Val(True) for n in CFG.nodes}
+
+    for n in CFG.nodes:
+        print(f'---- paths from {R} to {n}:')
+        for path in nx.all_simple_paths(CDG, R, n):
+            print(f'path from {R} to {n}: {path}')
+
+            conj = expr.Val(True)
+
+            # for each A->B on the path
+            for (A,B) in zip(path, path[1:]):
+                if CFG.out_degree(A) != 2:
+                    continue
+
+                # depend on a variable named either:
+                # 'A': first edge taken
+                # '/A': second edge taken
+                edges_out = list(CFG.edges(A))
+                print(f'searching for ({A},{B}) in {edges_out}')
+                if (A,B) == edges_out[0]:
+                    conj = expr.And(conj, expr.Var(A))
+                elif (A,B) == edges_out[1]:
+                    conj = expr.Not(expr.And(conj, expr.Var(A)))
+                else:
+                    raise Exception('edge not found')
+
+            result[n] = expr.Or(result[n], conj)
+
+    return result
+
 #------------------------------------------------------------------------------
 # misc
 #------------------------------------------------------------------------------
@@ -314,6 +351,9 @@ def add_single_exit(G):
 # fixed test cases
 #------------------------------------------------------------------------------
 
+# from No More Gotos: Decompilation Using Pattern-Independent Control-Flow
+# Structuring and Semantics-Preserving Transformations -Yakdan, Eschweiler,
+# Gerhards-Padilla, Smith
 def gen_dream_R2():
     G = nx.DiGraph()
 
@@ -391,9 +431,9 @@ if __name__ == '__main__':
 
     # one-off stuff
     if 0:
-        G = gen_test2()
-        compute_control_dependency_graph(G, verbose=True)
-        draw(compute_postdominator_tree(G), '/tmp/test2-postdoms.svg', verbose=True)
+        CFG = gen_test2()
+        rc = compute_reaching_conditions(CFG)
+        print(rc)
         sys.exit(0)
 
     print('-------- testing dominators, post-dominators')
