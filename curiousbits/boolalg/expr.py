@@ -281,6 +281,68 @@ class Or(BoolExpr):
         self._str_cache = '+'.join(str(c) for c in sorted(subresults))
         return self._str_cache
 
+class Xor(BoolExpr):
+    def __init__(self, *children):
+        super().__init__()
+        assert all(isinstance(c, BoolExpr) for c in children), breakpoint()
+        self.children = list(children)
+
+    def evaluate(self, values):
+        sr = [c.evaluate(values) for c in self.children]
+        return sr.count(True) == 1
+
+    def deepen(self):
+        self.children = [c.deepen() for c in self.children]
+
+        if len(self.children) < 2:
+            return self
+
+        result = Xor(self.children[0], self.children[1])
+        for c in self.children[2:]:
+            result = Xor(result, c)
+        return result
+
+    def flatten(self):
+        self.children = [c.flatten() for c in self.children]
+
+        new_children = []
+        for c in self.children:
+            if type(c) == Xor:
+                new_children.extend(c.children)
+            else:
+                new_children.append(c)
+
+        self.children = new_children
+        return self
+
+    def reduce(self):
+        return self
+
+    def clone(self):
+        return Xor(*[c.clone() for c in self.children])
+
+    def __eq__(self, other):
+        if type(other) == str:
+            other = parse(other)
+        return type(other) == Xor and self.children == other.children
+
+    def __repr__(self):
+        return 'Xor(' + ','.join([repr(c) for c in self.children]) + ')'
+
+    def __py__(self):
+        return ' ^ '.join([f'({c.__py__()})' if isinstance(c, Or) else c.__py__() for c in self.children])
+
+    def __c__(self):
+        return ' ^ '.join([f'({c.__c__()})' if isinstance(c, Or) else c.__c__() for c in self.children])
+
+    def __str__(self):
+        lines = []
+        for c in self.children:
+            (l, r) = ('(', ')') if isinstance(c, Or) else ('', '')
+            lines.append(l + str(c) + r)
+        self._str_cache = '^'.join(sorted(lines))
+        return self._str_cache
+
 class Not(BoolExpr):
     def __init__(self, child):
         super().__init__()

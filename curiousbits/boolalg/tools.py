@@ -1,5 +1,6 @@
 import ast
 import random
+from subprocess import *
 
 #from . import expr
 from .expr import *
@@ -18,12 +19,20 @@ def refine(tree):
         return refine(tree.value)
     elif type(tree) == ast.UnaryOp:
         return Not(refine(tree.operand))
+    elif type(tree) == ast.BinOp:
+        subr = [refine(tree.left), refine(tree.right)]
+        if type(tree.op) == ast.BitXor:
+            return Xor(*subr)
+        else:
+            raise NotImplementedError()
     elif type(tree) == ast.BoolOp:
         subr = [refine(v) for v in tree.values]
         if type(tree.op) == ast.Or:
             return Or(*subr)
         elif type(tree.op) == ast.And:
             return And(*subr)
+        else:
+            raise NotImplementedError()
     elif type(tree) == ast.Name:
         return Var(tree.id)
     elif type(tree) == ast.Constant:
@@ -34,8 +43,11 @@ def refine(tree):
 # parse a logical expression in Python to ExprNode
 def parse_python(input_):
     ast_tree = ast.parse(input_)
+    # print(ast.dump(ast_tree, indent=4))
     expr_tree = refine(ast_tree)
     return expr_tree
+
+parse_python('A ^ B')
 
 #------------------------------------------------------------------------------
 # generate random expressions
@@ -231,11 +243,65 @@ def print_truth_table(expr, varnames=None):
         binstr = ''.join(['1' if i&(1<<(n-k-1)) else '0' for k in range(n)])
         print(f'{binstr} {1 if i in indices else 0}')
 
+def shellout(cmd, input_text=None):
+    process = Popen(cmd, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+    if input_text == None:
+        (stdout, stderr) = process.communicate()
+    else:
+        if type(input_text) == str:
+            input_text = input_text.encode('utf-8')
+        (stdout, stderr) = process.communicate(input=input_text)
+    stdout = stdout.decode("utf-8")
+    stderr = stderr.decode("utf-8")
+    process.wait()
+    return (stdout, stderr)
+
+def gen_dot(expr):
+    dot = []
+    dot.append('digraph G {')
+
+    # global graph settings
+    dot.append('// global settings')
+    dot.append('rankdir="LR"')
+    dot.append('node [];')
+    dot.append('edge [];')
+
+    # node list
+    dot.append('// nodes')
+    for n in expr.all_nodes():
+        if type(n) == Var:
+            label = n.name
+        else:
+            label = n.__class__.__name__
+        dot.append(f'{id(n)} [label="{label}"];')
+
+    def edge_finder(n):
+        if type(n) == Var: return []
+        result = [(n, c) for c in n.children]
+        result = result + sum([edge_finder(c) for c in n.children], [])
+        return result
+
+    # edge list
+    dot.append('// edges')
+    for (a, b) in edge_finder(expr):
+        dot.append(f'{id(b)} -> {id(a)};')
+
+    dot.append('}')
+
+    return '\n'.join(dot)
+
 #------------------------------------------------------------------------------
 # tests
 #------------------------------------------------------------------------------
 if __name__ == '__main__':
     import sys
+
+    print('PARSE XOR')
+    expr = parse_python('A ^ B')
+    print(expr)
+    print(expr.__py__())
+    print_truth_table(expr)
+    sys.exit(0)
 
     print('GENERATE SOME RANDOM EQUATIONS')
     varnames = list('ABCDEF')
