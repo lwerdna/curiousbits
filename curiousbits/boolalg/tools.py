@@ -76,9 +76,22 @@ def generate(n_nodes, varnames):
     return expr
 
 #------------------------------------------------------------------------------
-# expr <-> minterms
+# expr -> truth indices
 #------------------------------------------------------------------------------
-def to_minterms(expr, varnames=None):
+
+# eg:
+#
+# Truth table for XOR:
+# A B C
+# 0 0 0
+# 0 1 1
+# 1 0 1
+# 1 1 0
+#
+# has truth indices [1,2]
+
+# eg: A/B + /AB -> [1,2]
+def to_truth_indices(expr, varnames=None):
     result = []
 
     if varnames == None:
@@ -94,11 +107,33 @@ def to_minterms(expr, varnames=None):
 
     return result
 
-def from_minterms(ones, varnames):
+#------------------------------------------------------------------------------
+# truth indices -> sum of products (SOP) or conjunction of minterms
+#------------------------------------------------------------------------------
+
+# eg:
+#
+# Truth table for XOR:
+# A B C
+# 0 0 0
+# 0 1 1
+# 1 0 1
+# 1 1 0
+#
+# A minterm is a term that's TRUE for exactly one combination of inputs (each row).
+# There are 2^n minterms for n variables: [/A/B, /AB, A/B, /A/B]
+# The output column acts as an indicator vector of which minterms will be selected in the sum of products:
+#   [0, 1, 1, 0] selects [/AB, A/B] resulting in /AB + A/B
+
+# eg:
+# [1,2,3] -> A/B + /AB
+def truth_indices_to_sop(ones, varnames):
     n = len(varnames)
 
     if not ones or not n:
         return Val(False)
+    if len(ones) == 2**n:
+        return Val(True)
 
     products = []
     for minterm in ones:
@@ -111,7 +146,49 @@ def from_minterms(ones, varnames):
 
         products.append(And(*factors))
 
-    return Or(*products)
+    return Or(*products) if len(products)>1 else products[0]
+
+
+#------------------------------------------------------------------------------
+# truth indices -> sum of products (SOP) or disjunction of maxterms
+#------------------------------------------------------------------------------
+
+# eg:
+#
+# Truth table for XOR:
+# A B C
+# 0 0 0
+# 0 1 1
+# 1 0 1
+# 1 1 0
+#
+# A maxterm is a term that's FALSE for exactly one combination of inputs (each row).
+# There are 2^n maxterms for n variables: [A+B, A+/B, /A+B, /A+/B]
+# The complement of the output column acts as an indicator vector of which maxterms will be selected in the product of sums:
+#   [0, 1, 1, 0] complemented is [1, 0, 0, 1] selects [A+B, /A+/B] resulting in (A+B)(/A+/B)
+
+def truth_indices_to_pos(ones, varnames):
+    n = len(varnames)
+
+    if not ones or not n:
+        return Val(False)
+    if len(ones) == 2**n:
+        return Val(True)
+
+    zeroes = sorted(set(range(2**n)) - set(ones))
+
+    sums = []
+    for row in zeroes:
+        addends = []
+        for i in range(n):
+            if row & (1<<(n-1-i)):
+                addends.append(Not(Var(varnames[i])))
+            else:
+                addends.append(Var(varnames[i]))
+
+        sums.append(Or(*addends))
+
+    return And(*sums) if len(sums)>1 else sums[0]
 
 #------------------------------------------------------------------------------
 # tests
@@ -126,45 +203,70 @@ if __name__ == '__main__':
         print(f'{n_nodes}: ' + str(expr))
         print(f'{n_nodes}: ' + repr(expr))
 
-    print('SHOW MINTERMS')
+    print('BASIC CONVERSIONS ON XOR')
+    expr = parse_python('(A and not B) or (not A and B)')
+    print(expr)
+    assert str(expr) in ['/AB+/BA', '/BA+/AB']
+
+    indices = to_truth_indices(expr)
+    print(indices)
+    assert indices == [1, 2]
+
+    sop = truth_indices_to_sop(indices, ['A', 'B'])
+    print(sop)
+    assert str(sop) in ['/AB+/BA', '/BA+/AB']
+    pos = truth_indices_to_pos(indices, ['A', 'B'])
+    print(pos)
+    assert str(pos) in ['(/A+/B)(A+B)', '(A+B)(/A+/B)']
+
+    assert to_truth_indices(sop) == to_truth_indices(pos)
+
+    print('SHOW TRUTH INDICES')
     for n_nodes in range(1, 20):
         expr = generate(n_nodes, varnames)
-        minterms = to_minterms(expr)
-        print(f'{expr} -> {minterms}')
+        indices = to_truth_indices(expr)
+        print(f'{expr} -> {indices}')
 
-    print('GEN FROM MINTERMS')
-    for minterms in [[], [0], [1], [0,1]]:
-        expr = from_minterms(minterms, list('A'))
-        print(f'{minterms} -> {expr}')
-    for minterms in [[], [0], [1], [2], [3], [0,1], [0,2], [0,3], [1,2], [1,3], [2,3]]:
-        expr = from_minterms(minterms, list('AB'))
-        print(f'{minterms} -> {expr}')
+    print('GEN FROM TRUTH INDICES')
+    for indices in [[], [0], [1], [0,1]]:
+        sop = truth_indices_to_sop(indices, list('A'))
+        print(f'{indices} -(sop)-> {sop}')
+        pos = truth_indices_to_pos(indices, list('A'))
+        print(f'{indices} -(pos)-> {pos}')
+        assert to_truth_indices(sop) == to_truth_indices(pos)
 
-    print('CONVERT TO/FROM MINTERMS')
+    for indices in [[], [0], [1], [2], [3], [0,1], [0,2], [0,3], [1,2], [1,3], [2,3]]:
+        sop = truth_indices_to_sop(indices, list('AB'))
+        print(f'{indices} -(sop)-> {sop}')
+        pos = truth_indices_to_pos(indices, list('AB'))
+        print(f'{indices} -(pos)-> {pos}')
+        assert to_truth_indices(sop) == to_truth_indices(pos)
+
+    print('CONVERT TO/FROM TRUTH INDICES')
     expr0 = parse_python('A')
-    mt0 = to_minterms(expr0)
-    print(f'{expr0} -> {mt0}')
+    indices0 = to_truth_indices(expr0)
+    print(f'{expr0} -> {indices0}')
     varnames = sorted(expr0.varnames())
-    expr1 = from_minterms(mt0, varnames)
-    mt1 = to_minterms(expr1)
-    print(f'{expr1} -> {mt1}')
+    expr1 = truth_indices_to_sop(indices0, varnames)
+    indices1 = to_truth_indices(expr1)
+    print(f'{expr1} -> {indices1}')
 
     expr = parse_python('A and (A or B)')
-    minterms = to_minterms(expr)
-    print(f'{expr} -> {minterms}')
+    indices = to_truth_indices(expr)
+    print(f'{expr} -> {indices}')
     varnames = sorted(expr.varnames())
-    expr = from_minterms(minterms, varnames)
+    expr = truth_indices_to_sop(indices, varnames)
     print(f'{expr}')
 
     for n_nodes in range(1, 40):
         expr0 = generate(n_nodes, list('ABCDEF'))
-        minterms0 = to_minterms(expr0)
-        print(f'{expr0} -> {minterms0}')
+        indices0 = to_truth_indices(expr0)
+        print(f'{expr0} -> {indices0}')
 
         varnames = sorted(expr0.varnames())
-        expr1 = from_minterms(minterms0, varnames)
-        minterms1 = to_minterms(expr1)
-        print(f'{expr1} -> {minterms1}')
+        expr1 = truth_indices_to_sop(indices0, varnames)
+        indices1 = to_truth_indices(expr1)
+        print(f'{expr1} -> {indices1}')
 
     print('FACTOR OUT SUBTREE')
     a = parse_python('A')
