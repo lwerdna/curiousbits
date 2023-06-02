@@ -90,27 +90,34 @@ def solve(expr, desired_output=True):
     return result
 
 def solve_all(expr, desired_output=True):
+    varnames = expr.varnames()
 
-    expr = expr.clone()
+    expr2, outvar = Tseytin_transformation(expr)
 
+    # append constraint on output
+    if not desired_output:
+        outvar = Not(outvar)
+
+    expr2.children.append(Or(outvar))
+
+    # solve
+    solutions = []
     while True:
-        print('solving:', expr)
-        print('solving:', expr.__py__())
-        print_truth_table(expr)
-        solution = solve(expr, desired_output)
+        solution = solve_cnf(expr2)
         if not solution:
             break
 
-        names = sorted(solution.keys())
-        print(','.join(names) + ': ' + ''.join('1' if solution[n] else '0' for n in names))
+        # pick out original variables (no temporaries)
+        solutions.append({name: solution[name] for name in varnames})
 
+        #
         stopper = Or(*[Not(Var(name)) if value else Var(name) for name,value in solution.items()])
         #print('stopper:', stopper)
 
-        expr = And(expr, stopper)
+        expr2.children.append(stopper)
         #print(expr.__str_tabbed_tree__())
 
-    breakpoint()
+    return solutions
 
 #------------------------------------------------------------------------------
 # main
@@ -119,47 +126,34 @@ def solve_all(expr, desired_output=True):
 if __name__ == '__main__':
     import sys
 
+    print('\nDemonstrates how clauses can be added to find all solutions.')
+    expr = And(parse_python('(A or B or C)'))
+    print(solve_cnf(expr)) # finds {'A': False, 'B': True, 'C': False}
+    expr = parse_python('(A or B or C) and (A or not B or C)')
+    print(solve_cnf(expr)) # finds {'A': False, 'B': True, 'C': True}
+    expr = parse_python('(A or B or C) and (A or not B or C) and (A or not B or not C)')
+    print(solve_cnf(expr)) # finds {'A': False, 'B': False, 'C': True}
+    expr = parse_python('(A or B or C) and (A or not B or C) and (A or not B or not C) and (A or B or not C)')
+    print(solve_cnf(expr)) # finds {'A': True, 'B': False, 'C': False}
+    expr = parse_python('(A or B or C) and (A or not B or C) and (A or not B or not C) and (A or B or not C) and (not A or B or C)')
+    print(solve_cnf(expr)) # finds {'A': True, 'B': False, 'C': True}
+    expr = parse_python('(A or B or C) and (A or not B or C) and (A or not B or not C) and (A or B or not C) and (not A or B or C) and (not A or B or not C)')
+    print(solve_cnf(expr)) # finds {'A': True, 'B': True, 'C': True}
+    expr = parse_python('(A or B or C) and (A or not B or C) and (A or not B or not C) and (A or B or not C) and (not A or B or C) and (not A or B or not C) and (not A or not B or not C)')
+    print(solve_cnf(expr)) # finds {'A': True, 'B': True, 'C': False}
+    expr = parse_python('(A or B or C) and (A or not B or C) and (A or not B or not C) and (A or B or not C) and (not A or B or C) and (not A or B or not C) and (not A or not B or not C) and (not A or not B or C)')
+    print(solve_cnf(expr)) # finds {}
+
+    print('\nSolutions to XOR.')
     # /x1 x2 + x1 /x2
-    #expr = parse_python('(not x1 and x2) or (x1 and not x2)')
-    #print(solve_all(expr))
-    #sys.exit(0)
-
-    # (/x1x2+/x2x1+/x2x3)(/x1+/x3+x2)(/x1+x3+x2)(/x3+x1+x2)(/x2+/x3+x1)
-    # if x1 x2 x3 == 0 1 0    yes        yes        yes       yes
-    expr = parse_python('(not x1 and x2 or x1 and not x2 or not x2 and x3) and (not x1 or x3 or x2) and (not x1 or not x3 or x2) and (x1 or not x3 or x2) and (x1 or not x3 or not x2)')
-    print(expr)
-    print_truth_table(expr)
-
-    expr2, outvar = Tseytin_transformation(expr)
-    print(expr2.varnames())
-    print(len(expr2.varnames()))
-    print_truth_table(expr2)
-
-    sys.exit(0)
-
-    print(solve_cnf(expr))
-    print(solve(expr))
+    expr = parse_python('(not x1 and x2) or (x1 and not x2)')
+    print(solve_all(expr))
 
     # /x1 x2 + x1 /x2 + /x2 x3
+    print('\nWIKIPEDIA EXAMPLE, expect 5 solutions')
     expr = parse_python('((not x1) and x2) or (x1 and (not x2)) or ((not x2) and x3)')
     print(expr)
-    assert is_cnf(expr) == False
-
-    print(solve_all(expr))
-    sys.exit(0)
-
-    print('---- TSEYTIN TRANSFORM ----')
-
-    expr2, outvar = Tseytin_transformation(expr)
-
-    # we also want the output to be true
-    expr2.children.append(Or(outvar))
-
-    print(expr2.__str_tabbed_tree__())
-
-    assert is_cnf(expr2)
-
-    dimacs, lookup = to_dimacs(expr2)
-    print(dimacs)
-
-    print(solve_cnf(expr2))
+    print_truth_table(expr)
+    solutions = solve_all(expr)
+    print(solutions)
+    assert len(solutions) == 5

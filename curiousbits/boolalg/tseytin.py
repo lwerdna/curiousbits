@@ -57,18 +57,16 @@ def Tseytin_transformation(expr):
 if __name__ == '__main__':
     import sys
 
-    # TESTS
-    expr = parse_python('((not x1) and x2) or (x1 and (not x2)) or ((not x2) and x3)')
-    print(is_binary(expr))
-    print(expr.__str_tabbed_tree__())
-    print(f'---- deepend ----')
-    expr = expr.deepen()
-    print(is_binary(expr))
-    print(expr.__str_tabbed_tree__())
+    # A should have "gate is working" expression True and output variable A
+    expr = Var('A')
     texpr, v = Tseytin_transformation(expr)
-    print(f'TSEYTIN({expr}): {v} = {texpr}')
-    print_truth_table(expr)
-    sys.exit(0)
+    assert str(texpr)=='T' and str(v)=='A'
+
+    # /A should have "gate is working" expression True and output variable A
+    expr = Not(Var('A'))
+    texpr, v = Tseytin_transformation(expr)
+    print(texpr)
+    print(v)
 
     print('TSEYTIN TRANSFORMATION')
     expr = Not(Var('A'))

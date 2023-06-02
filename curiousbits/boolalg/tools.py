@@ -287,7 +287,7 @@ if __name__ == '__main__':
     for n_nodes in range(1, 40):
         expr0 = generate(n_nodes, list('ABCDEF'))
         print(expr0)
-        expr1 = expr0.make_binary()
+        expr1 = expr0.deepen()
         print('converted to binary...')
         print(expr1)
         assert to_truth_indices(expr0) == to_truth_indices(expr1)
