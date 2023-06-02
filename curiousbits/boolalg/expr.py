@@ -26,6 +26,10 @@ class BoolExpr(object):
         self._str_cache = ''
         self.children = []
 
+    # send dictionary like {'A':False, 'B':True}
+    def evaluate(self, values):
+        raise NotImplementedError()
+
     def varnames(self):
         result = set()
         for c in self.children:
@@ -52,10 +56,24 @@ class BoolExpr(object):
         return sum([c.all_nodes() for c in self.children], [self])
 
     def reduce(self):
-        pass
+        raise NotImplementedError()
+
+    # "deepen" the expression
+    # AND(A,B,C) -> AND(AND(A,B),C)
+    #
+    # Any gates with more than two inputs need to override
+    def deepen(self):
+        return self
+
+    # "flatten" the expression
+    # AND(AND(A,B),C) -> AND(A,B,C)
+    #
+    # Any gates with more than two inputs need to override
+    def flatten(self):
+        return self
 
     def clone(self):
-        pass
+        raise NotImplementedError()
 
     def syntactic_equality(self, other):
         str(self)
@@ -72,19 +90,27 @@ class BoolExpr(object):
             return self
 
     def __py__(self):
-        pass
+        raise NotImplementedError()
 
     def __c__(self):
-        pass
+        raise NotImplementedError()
+
+    # Var and Val (with no children) need to override
+    def __str_tabbed_tree__(self, depth=0):
+        indent = '  '*depth
+        result = [f'{indent}{self.__class__.__name__}']
+        for c in self.children:
+            result.append(c.__str_tabbed_tree__(depth+1))
+        return '\n'.join(result)
 
     def __str_cached__(self):
         return self._str_cache
 
     def __str__(self):
-        pass
+        raise NotImplementedError()
 
     def __repr__(self):
-        pass
+        raise NotImplementedError()
 
 class And(BoolExpr):
     def __init__(self, *children):
@@ -97,6 +123,30 @@ class And(BoolExpr):
         if any(r==False for r in sr): return False
         if all(r==True for r in sr): return True
         return None
+
+    def deepen(self):
+        self.children = [c.deepen() for c in self.children]
+
+        if len(self.children) < 2:
+            return self
+
+        result = And(self.children[0], self.children[1])
+        for c in self.children[2:]:
+            result = And(result, c)
+        return result
+
+    def flatten(self):
+        self.children = [c.flatten() for c in self.children]
+
+        new_children = []
+        for c in self.children:
+            if type(c) == And:
+                new_children.extend(c.children)
+            else:
+                new_children.append(c)
+
+        self.children = new_children
+        return self
 
     def reduce(self):
         self.children = [c.reduce() for c in self.children]
@@ -159,6 +209,30 @@ class Or(BoolExpr):
         if any(r==True for r in sr): return True
         if all(r==False for r in sr): return False
         return None
+
+    def deepen(self):
+        self.children = [c.deepen() for c in self.children]
+
+        if len(self.children) < 2:
+            return self
+
+        result = Or(self.children[0], self.children[1])
+        for c in self.children[2:]:
+            result = Or(result, c)
+        return result
+
+    def flatten(self):
+        self.children = [c.flatten() for c in self.children]
+
+        new_children = []
+        for c in self.children:
+            if type(c) == Or:
+                new_children.extend(c.children)
+            else:
+                new_children.append(c)
+
+        self.children = new_children
+        return self
 
     def reduce(self):
         self.children = [c.reduce() for c in self.children]
@@ -320,6 +394,10 @@ class Var(BoolExpr):
     def __repr__(self):
         return f'Var("{self.name}")'
 
+    def __str_tabbed_tree__(self, depth=0):
+        indent = '  '*depth
+        return f'{indent}{self}'
+
     def __py__(self):
         return str(self)
 
@@ -370,6 +448,10 @@ class Val(BoolExpr):
 
     def __repr__(self):
         return f'Val({self.value})'
+
+    def __str_tabbed_tree__(self, depth=0):
+        indent = '  '*depth
+        return f'{indent}{self}'
 
     def __py__(self):
         return str(self.value)

@@ -191,72 +191,51 @@ def truth_indices_to_pos(ones, varnames):
     return And(*sums) if len(sums)>1 else sums[0]
 
 #------------------------------------------------------------------------------
-# Tseytin transformation
+# format testers
 #------------------------------------------------------------------------------
 
-# returns (expression equisatisfiable with proper operation of this gate,
-#          variable representing output of this gate)
-def Tseytin_transformation(node):
-    if type(node) == And:
-        if len(node.children) != 2:
-            raise NotImplementedError()
-        A_tseytin, A = Tseytin_transformation(node.children[0])
-        B_tseytin, B = Tseytin_transformation(node.children[1])
-        # generate variable representing this output
-        C = Var(f'gate_{id(node)}')
-        C_tseytin = And(Or(Not(A), Not(B), C), Or(A, Not(C)), Or(B, Not(C)))
-        return (And(A_tseytin, B_tseytin, C_tseytin), C)
-    if type(node) == Or:
-        if len(node.children) != 2:
-            raise NotImplementedError()
-        A_tseytin, A = Tseytin_transformation(node.children[0])
-        B_tseytin, B = Tseytin_transformation(node.children[1])
-        # generate variable representing this output
-        C = Var(f'gate_{id(node)}')
-        C_tseytin = And(Or(A, B, Not(C)), Or(Not(A), C), Or(Not(B), C))
-        return (And(A_tseytin, B_tseytin, C_tseytin), C)
-    if type(node) == Not:
-        if len(node.children) != 1:
-            raise NotImplementedError()
-        A_tseytin, A = Tseytin_transformation(node.children[0])
-        # generate variable representing this output
-        C = Var(f'gate_{id(node)}')
-        C_tseytin = And(Or(Not(A), Not(C)), Or(A, C))
-        return (And(A_tseytin, C_tseytin), C)
-    elif type(node) == Var:
-        return (Val(True), node)
-    else:
-        raise NotImplementedError()
+def is_binary(expr):
+    if not hasattr(expr, 'children'):
+        return True
 
-# https://en.wikipedia.org/wiki/Tseytin_transformation
-#def Tseytin_transformation(self):
-#    pass
+    return len(expr.children) <= 2 and all([is_binary(c) for c in expr.children])
+
+def is_cnf(expr):
+    if type(expr) != And:
+        return False
+
+    for c in expr.children:
+        if type(c) != Or:
+            return False
+
+        for gc in c.children:
+            if not gc.is_literal():
+                return False
+
+    return True
 
 #------------------------------------------------------------------------------
 # misc
 #------------------------------------------------------------------------------
 
+def print_truth_table(expr, varnames=None):
+    if varnames == None:
+        varnames = sorted(expr.varnames())
+
+    n = len(varnames)
+
+    indices = set(to_truth_indices(expr, varnames))
+
+    print(', '.join(varnames) + ', output')
+    for i in range(2**n):
+        binstr = ''.join(['1' if i&(1<<(n-k-1)) else '0' for k in range(n)])
+        print(f'{binstr} {1 if i in indices else 0}')
 
 #------------------------------------------------------------------------------
 # tests
 #------------------------------------------------------------------------------
 if __name__ == '__main__':
     import sys
-
-    print('TSEYTIN TRANSFORMATION')
-    expr = Not(Var('A'))
-    texpr, v = Tseytin_transformation(expr)
-    print(f'TSEYTIN({expr}): {v} = {texpr}')
-
-    expr = And(Var('A'), Var('B'))
-    texpr, v = Tseytin_transformation(expr)
-    print(f'TSEYTIN({expr}): {v} = {texpr}')
-
-    expr = Or(Var('A'), Var('B'))
-    texpr, v = Tseytin_transformation(expr)
-    print(f'TSEYTIN({expr}): {v} = {texpr}')
-
-    sys.exit(0)
 
     print('GENERATE SOME RANDOM EQUATIONS')
     varnames = list('ABCDEF')
@@ -303,6 +282,15 @@ if __name__ == '__main__':
         pos = truth_indices_to_pos(indices, list('AB'))
         print(f'{indices} -(pos)-> {pos}')
         assert to_truth_indices(sop) == to_truth_indices(pos)
+
+    print('CONVERT TO BINARY SHOULDNT CHANGE TRUTH VALUES')
+    for n_nodes in range(1, 40):
+        expr0 = generate(n_nodes, list('ABCDEF'))
+        print(expr0)
+        expr1 = expr0.make_binary()
+        print('converted to binary...')
+        print(expr1)
+        assert to_truth_indices(expr0) == to_truth_indices(expr1)
 
     print('CONVERT TO/FROM TRUTH INDICES')
     expr0 = parse_python('A')
