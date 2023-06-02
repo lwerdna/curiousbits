@@ -1,6 +1,6 @@
 from subprocess import Popen, PIPE
 
-from .tools import parse_python, generate, to_minterms
+from .tools import parse_python, generate, to_truth_indices
 from .expr import *
 
 class TruthTable(object):
@@ -146,6 +146,7 @@ if __name__ == '__main__':
         print(f'{expr0} -> {expr1}')
 
         vnames = expr0.varnames()
-        assert to_minterms(expr0, vnames) == to_minterms(expr1, vnames)
+
+        assert to_truth_indices(expr0, vnames) == to_truth_indices(expr1, vnames)
 
     print('pass')

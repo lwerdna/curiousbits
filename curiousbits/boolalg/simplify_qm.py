@@ -1,7 +1,7 @@
 # convenience wrapper to the quine-mccluskey package
 # pip install quine-mccluskey
 
-from .tools import generate, to_minterms
+from .tools import generate, to_truth_indices
 from .expr import *
 
 def simplify(expr):
@@ -10,7 +10,7 @@ def simplify(expr):
     qm = QuineMcCluskey(use_xor=False)
 
     vnames = sorted(expr.varnames())
-    ones = to_minterms(expr)
+    ones = to_truth_indices(expr)
     result = qm.simplify(ones, dc=[], num_bits=len(vnames))
 
     if result == None:
@@ -44,6 +44,6 @@ if __name__ == '__main__':
         print(f'{expr0} -> {expr1}')
 
         vnames = expr0.varnames()
-        assert to_minterms(expr0, vnames) == to_minterms(expr1, vnames)
+        assert to_truth_indices(expr0, vnames) == to_truth_indices(expr1, vnames)
 
     print('pass')

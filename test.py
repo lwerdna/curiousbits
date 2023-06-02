@@ -42,6 +42,6 @@ if __name__ == '__main__':
             print(f'{expr0} -> {expr1}')
 
             vnames = expr0.varnames()
-            assert batools.to_minterms(expr0, vnames) == batools.to_minterms(expr1, vnames)
+            assert batools.to_truth_indices(expr0, vnames) == batools.to_truth_indices(expr1, vnames)
 
     print('pass')
