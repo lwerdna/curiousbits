@@ -126,7 +126,7 @@ def solve_all(expr, desired_output=True):
 if __name__ == '__main__':
     import sys
 
-    print('\nDemonstrates how clauses can be added to find all solutions.')
+    print('\nDemonstrate how clauses can be added to find all solutions.')
     expr = And(parse_python('(A or B or C)'))
     print(solve_cnf(expr)) # finds {'A': False, 'B': True, 'C': False}
     expr = parse_python('(A or B or C) and (A or not B or C)')
@@ -144,16 +144,43 @@ if __name__ == '__main__':
     expr = parse_python('(A or B or C) and (A or not B or C) and (A or not B or not C) and (A or B or not C) and (not A or B or C) and (not A or B or not C) and (not A or not B or not C) and (not A or not B or C)')
     print(solve_cnf(expr)) # finds {}
 
-    print('\nSolutions to XOR.')
-    # /x1 x2 + x1 /x2
-    expr = parse_python('(not x1 and x2) or (x1 and not x2)')
-    print(solve_all(expr))
+    print('\nSolutions to XOR (vanilla)')
+    # A ^ B
+    expr = parse_python('A ^ B')
+    print(f'Solving: {expr}')
+    solutions = solve_all(expr)
+    for solution in solutions:
+        print(f'Testing solution: {solution}')
+        assert expr.evaluate(solution) == True
+        print('PASS')
+
+    print('\nSolutions to XOR (SOP)')
+    # /A B + A /B
+    expr = parse_python('(not A and B) or (A and not B)')
+    print(f'Solving: {expr}')
+    solutions = solve_all(expr)
+    for solution in solutions:
+        print(f'Testing solution: {solution}')
+        assert expr.evaluate(solution) == True
+        print('PASS')
+
+    print('\nSolutions to XOR (POS)')
+    # (A + B)(/A + /B)
+    expr = parse_python('(A or B) and (not A or not B)')
+    print(f'Solving: {expr}')
+    solutions = solve_all(expr)
+    for solution in solutions:
+        print(f'Testing solution: {solution}')
+        assert expr.evaluate(solution) == True
+        print('PASS')
 
     # /x1 x2 + x1 /x2 + /x2 x3
     print('\nWIKIPEDIA EXAMPLE, expect 5 solutions')
     expr = parse_python('((not x1) and x2) or (x1 and (not x2)) or ((not x2) and x3)')
-    print(expr)
-    print_truth_table(expr)
+    print(f'Solving: {expr}')
     solutions = solve_all(expr)
-    print(solutions)
     assert len(solutions) == 5
+    for solution in solutions:
+        print(f'Testing solution: {solution}')
+        assert expr.evaluate(solution) == True
+        print('PASS')

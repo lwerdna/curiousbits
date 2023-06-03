@@ -18,7 +18,7 @@ def Tseytin_transformation_re(node):
         C = Var(f'gate_{id(node)}')
         C_tseytin = And(Or(Not(A), Not(B), C), Or(A, Not(C)), Or(B, Not(C)))
         return (And(A_tseytin, B_tseytin, C_tseytin), C)
-    if type(node) == Or:
+    elif type(node) == Or:
         if len(node.children) != 2:
             raise NotImplementedError()
         A_tseytin, A = Tseytin_transformation_re(node.children[0])
@@ -27,7 +27,16 @@ def Tseytin_transformation_re(node):
         C = Var(f'gate_{id(node)}')
         C_tseytin = And(Or(A, B, Not(C)), Or(Not(A), C), Or(Not(B), C))
         return (And(A_tseytin, B_tseytin, C_tseytin), C)
-    if type(node) == Not:
+    elif type(node) == Xor:
+        if len(node.children) != 2:
+            raise NotImplementedError()
+        A_tseytin, A = Tseytin_transformation_re(node.children[0])
+        B_tseytin, B = Tseytin_transformation_re(node.children[1])
+        # generate variable representing this output
+        C = Var(f'gate_{id(node)}')
+        C_tseytin = And(Or(Not(A), Not(B), Not(C)), Or(A, B, Not(C)), Or(A, Not(B), C), Or(Not(A), B, C))
+        return (And(A_tseytin, B_tseytin, C_tseytin), C)
+    elif type(node) == Not:
         if len(node.children) != 1:
             raise NotImplementedError()
         A_tseytin, A = Tseytin_transformation_re(node.children[0])
