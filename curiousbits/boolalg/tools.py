@@ -263,7 +263,8 @@ def gen_dot(expr):
     # global graph settings
     dot.append('// global settings')
     dot.append('rankdir="LR"')
-    dot.append('node [];')
+    #dot.append('graph [splines=ortho];')
+    dot.append('node [shape="rectangle"];')
     dot.append('edge [];')
 
     # node list
@@ -271,9 +272,11 @@ def gen_dot(expr):
     for n in expr.all_nodes():
         if type(n) == Var:
             label = n.name
+            extra = ' shape="plain"'
         else:
             label = n.__class__.__name__
-        dot.append(f'{id(n)} [label="{label}"];')
+            extra = ''
+        dot.append(f'{id(n)} [label="{label}"{extra}];')
 
     def edge_finder(n):
         if type(n) == Var: return []

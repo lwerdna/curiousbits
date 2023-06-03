@@ -51,6 +51,10 @@ class BoolExpr(object):
         self.children = [c.set_variable(name, bool(value)) for c in self.children]
         return self
 
+    def set_variables(self, lookup):
+        for name, value in lookup.items():
+            self.set_variable(name, value)
+
     # Var and Val need to override
     def all_nodes(self):
         return sum([c.all_nodes() for c in self.children], [self])
